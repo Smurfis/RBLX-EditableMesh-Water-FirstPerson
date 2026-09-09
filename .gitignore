@@ -1,0 +1,5 @@
+.DS_Store
+Thumbs.db
+*.rbxl.lock
+*.rbxlx.lock
+*.log
