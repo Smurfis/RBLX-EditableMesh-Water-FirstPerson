@@ -1,0 +1,52 @@
+{
+  "name": "RBLX-FirstPerson-Water",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+
+      "Shared": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true,
+
+        "Water": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true,
+
+          "WaterConfig": {
+            "$path": "src/ReplicatedStorage/Shared/Water/WaterConfig.lua"
+          },
+
+          "Assets": {
+            "$className": "Folder",
+            "$ignoreUnknownInstances": true
+          }
+        }
+      },
+
+      "FirstPersonWater": {
+        "$path": "src/ReplicatedStorage/FirstPersonWater",
+        "$ignoreUnknownInstances": true
+      }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "$ignoreUnknownInstances": true,
+
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "src/StarterPlayer/StarterPlayerScripts",
+        "$ignoreUnknownInstances": true
+      },
+
+      "StarterCharacterScripts": {
+        "$className": "StarterCharacterScripts",
+        "$path": "src/StarterPlayer/StarterCharacterScripts",
+        "$ignoreUnknownInstances": true
+      }
+    }
+  }
+}
