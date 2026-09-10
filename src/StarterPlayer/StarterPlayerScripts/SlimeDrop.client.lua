@@ -9,6 +9,44 @@ local player = Players.LocalPlayer
 local slime = workspace:WaitForChild("Slime", 10)
 local previousY: number? = nil
 local wasInWater = false
+local mouse = player:GetMouse()
+local highlight: Highlight? = nil
+local trail: Trail? = nil
+
+if slime and slime:IsA("Model") then
+	highlight = Instance.new("Highlight")
+	highlight.Name = "SlimeHoverHighlight"
+	highlight.Adornee = slime
+	highlight.FillColor = Color3.fromRGB(255, 212, 138)
+	highlight.OutlineColor = Color3.fromRGB(255, 212, 138)
+	highlight.FillTransparency = 0.82
+	highlight.OutlineTransparency = 0.35
+	highlight.Enabled = false
+	highlight.Parent = slime
+
+	local root = slime.PrimaryPart or slime:FindFirstChild("HumanoidRootPart", true)
+	if root and root:IsA("BasePart") then
+		local top = Instance.new("Attachment")
+		top.Position = Vector3.new(0, root.Size.Y * 0.5, 0)
+		top.Parent = root
+		local bottom = Instance.new("Attachment")
+		bottom.Position = Vector3.new(0, -root.Size.Y * 0.5, 0)
+		bottom.Parent = root
+		trail = Instance.new("Trail")
+		trail.Name = "SlimeFallTrail"
+		trail.Attachment0 = top
+		trail.Attachment1 = bottom
+		trail.Color = ColorSequence.new(Color3.fromRGB(255, 212, 138))
+		trail.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.2),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		trail.Lifetime = 0.28
+		trail.WidthScale = NumberSequence.new(0.8)
+		trail.Enabled = false
+		trail.Parent = root
+	end
+end
 
 local function makeSplash(position: Vector3)
 	local assets = ReplicatedStorage:FindFirstChild("Shared")
@@ -57,9 +95,18 @@ if slime and slime:IsA("Model") then
 			end
 			previousY = y
 			wasInWater = inWater
+			if trail then
+				trail.Enabled = not inWater and root.AssemblyLinearVelocity.Y < -1
+			end
 		end)
 	end
 end
+
+RunService.RenderStepped:Connect(function()
+	if not highlight or not slime then return end
+	local target = mouse.Target
+	highlight.Enabled = target ~= nil and target:IsDescendantOf(slime)
+end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed or (input.KeyCode ~= Enum.KeyCode.G and input.KeyCode ~= Enum.KeyCode.E) then return end
