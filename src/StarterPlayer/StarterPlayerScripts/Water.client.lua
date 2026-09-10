@@ -924,6 +924,11 @@ local function updateTransparentOcean()
 	waterBaseMesh.Transparency = if transparent then 1 else WATER_BASE_TRANSPARENCY
 	waterMiddleMesh.Transparency = if transparent then 1 else WATER_MIDDLE_TRANSPARENCY
 	waterMesh.Transparency = if transparent then 1 else WATER_SURFACE_TRANSPARENCY
+	for _, child in waterFolder:GetChildren() do
+		if child:IsA("BasePart") and string.sub(child.Name, 1, 8) == "FarWater" then
+			child.Transparency = if transparent then 1 else FAR_WATER_TRANSPARENCY
+		end
+	end
 	updateWaveFoamTransparency()
 end
 waterFolder:GetAttributeChangedSignal("TransparentOcean"):Connect(updateTransparentOcean)
@@ -1038,7 +1043,9 @@ local function createFarTile(
 		midColor
 
 	tile.Transparency =
-		FAR_WATER_TRANSPARENCY
+		if waterFolder:GetAttribute("TransparentOcean") == true
+			then 1
+			else FAR_WATER_TRANSPARENCY
 
 	tile.Parent =
 		waterFolder
