@@ -98,17 +98,11 @@ createKeybindRow(
 )
 
 local freeMouseRow = createKeybindRow(
-	"FreeMouseKeybind",
-	"rbxassetid://6436212602",
+	"MouseLockKeybind",
+	"rbxassetid://77904780414059",
 	"[Free Mouse: M]",
-	18
+	-42
 )
-freeMouseRow.AnchorPoint = Vector2.new(0, 1)
-freeMouseRow.Position = UDim2.new(0, 18, 1, -18)
-local freeMouseLabel = freeMouseRow:FindFirstChild("Label")
-if freeMouseLabel and freeMouseLabel:IsA("TextLabel") then
-	freeMouseLabel.TextXAlignment = Enum.TextXAlignment.Left
-end
 
 local reticle = Instance.new("Frame")
 reticle.Name = "FirstPersonReticle"
@@ -129,6 +123,35 @@ reticleStroke.Color = Color3.fromRGB(0, 0, 0)
 reticleStroke.Transparency = 0.25
 reticleStroke.Thickness = 1
 reticleStroke.Parent = reticle
+
+local serverLabel = Instance.new("TextLabel")
+serverLabel.Name = "ServerStatus"
+serverLabel.Position = UDim2.fromOffset(18, 18)
+serverLabel.Size = UDim2.fromOffset(620, 24)
+serverLabel.BackgroundTransparency = 1
+serverLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+serverLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+serverLabel.TextStrokeTransparency = 0.35
+serverLabel.Font = Enum.Font.Gotham
+serverLabel.TextSize = 14
+serverLabel.TextXAlignment = Enum.TextXAlignment.Left
+serverLabel.TextYAlignment = Enum.TextYAlignment.Center
+serverLabel.Parent = statusGui
+
+local versionLabel = Instance.new("TextLabel")
+versionLabel.Name = "WaterVersionStatus"
+versionLabel.AnchorPoint = Vector2.new(0, 1)
+versionLabel.Position = UDim2.new(0, 18, 1, -18)
+versionLabel.Size = UDim2.fromOffset(620, 24)
+versionLabel.BackgroundTransparency = 1
+versionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+versionLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+versionLabel.TextStrokeTransparency = 0.35
+versionLabel.Font = Enum.Font.Gotham
+versionLabel.TextSize = 14
+versionLabel.TextXAlignment = Enum.TextXAlignment.Left
+versionLabel.TextYAlignment = Enum.TextYAlignment.Center
+versionLabel.Parent = statusGui
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "ProjectStatus"
@@ -196,9 +219,9 @@ RunService.RenderStepped:Connect(function(deltaTime)
 	end
 
 	statusLabel.Text = string.format(
-		"RBLX EditableMesh Water First Person\n[server: %s, waterVersion: %s, fps: %d]",
-		serverId,
-		waterVersion,
+		"RBLX EditableMesh Water First Person\n[fps: %d]",
 		math.floor(fps + 0.5)
 	)
+	serverLabel.Text = string.format("[server: %s]", serverId)
+	versionLabel.Text = string.format("[waterVersion: %s]", waterVersion)
 end)
