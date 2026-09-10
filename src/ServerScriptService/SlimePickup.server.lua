@@ -47,22 +47,6 @@ local itemAttachment: Attachment? = nil
 local holdAttachment: Attachment? = nil
 local deathConnection: RBXScriptConnection? = nil
 local collisionStates: { [BasePart]: boolean } = {}
-local shoulderTransforms: { [Motor6D]: CFrame } = {}
-
-local function setHeldPose(character: Model, held: boolean)
-	for _, descendant in character:GetDescendants() do
-		if descendant:IsA("Motor6D") and (descendant.Name == "LeftShoulder" or descendant.Name == "RightShoulder") then
-			if held then
-				shoulderTransforms[descendant] = descendant.Transform
-				local side = if descendant.Name == "LeftShoulder" then -1 else 1
-				descendant.Transform = CFrame.new(side * 0.35, 0, -0.15) * CFrame.Angles(math.rad(-12), math.rad(side * 18), math.rad(side * 8))
-			else
-				descendant.Transform = shoulderTransforms[descendant] or CFrame.identity
-				shoulderTransforms[descendant] = nil
-			end
-		end
-	end
-end
 
 local function dropItem()
 	if alignPos then alignPos:Destroy(); alignPos = nil end
@@ -74,7 +58,6 @@ local function dropItem()
 		if part.Parent then part.CanCollide = canCollide end
 		collisionStates[part] = nil
 	end
-	if holder and holder.Character then setHeldPose(holder.Character, false) end
 	if root and root:IsA("BasePart") then
 		root:SetNetworkOwner(holder)
 	end
@@ -86,9 +69,6 @@ local function throwItem(player: Player)
 	local character = player.Character
 	local hrp = character and character:FindFirstChild("HumanoidRootPart")
 	local direction = if hrp and hrp:IsA("BasePart") then hrp.CFrame.LookVector else Vector3.new(0, 0, -1)
-	if character then
-		setHeldPose(character, false)
-	end
 	dropItem()
 	root.AssemblyLinearVelocity = direction * 28 + Vector3.new(0, 8, 0)
 	root:ApplyImpulse(direction * root.AssemblyMass * 18 + Vector3.new(0, root.AssemblyMass * 6, 0))
@@ -106,7 +86,6 @@ prompt.Triggered:Connect(function(player)
 
 	holder = player
 	prompt.Enabled = true
-	setHeldPose(character, true)
 	for _, descendant in item:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			collisionStates[descendant] = descendant.CanCollide
