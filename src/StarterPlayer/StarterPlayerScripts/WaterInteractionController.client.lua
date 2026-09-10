@@ -20,10 +20,16 @@ local WaterWaveSampler = require(
 )
 
 local TAG_NAME = "WaterInteractable"
-local SAMPLE_OCTAVES = 8
 local POSITION_RESPONSE = 7
 local ROTATION_RESPONSE = 6
 local MAX_UPDATE_DISTANCE = 500
+
+local PROFILES = {
+	SmallProp = { SampleCount = 1, Octaves = 8, UpdateHz = 30 },
+	MediumProp = { SampleCount = 3, Octaves = 8, UpdateHz = 30 },
+	Boat = { SampleCount = 6, Octaves = 6, UpdateHz = 30 },
+	LargeShip = { SampleCount = 8, Octaves = 4, UpdateHz = 20 },
+}
 
 type InteractableState = {
 	instance: Instance,
@@ -32,6 +38,9 @@ type InteractableState = {
 	currentY: number,
 	yaw: number,
 	currentRotation: CFrame,
+	targetY: number,
+	targetRotation: CFrame,
+	updateTimer: number,
 }
 
 local states: { [Instance]: InteractableState } = {}
@@ -78,6 +87,9 @@ local function addInteractable(instance: Instance)
 		currentY = root.Position.Y,
 		yaw = select(2, root.CFrame:ToOrientation()),
 		currentRotation = root.CFrame.Rotation,
+		targetY = root.Position.Y,
+		targetRotation = root.CFrame.Rotation,
+		updateTimer = 0,
 	}
 end
 
@@ -100,6 +112,129 @@ end
 local function isEnabled(instance: Instance): boolean
 	local value = instance:GetAttribute("WaterEnabled")
 	return value ~= false
+end
+
+local function getProfile(instance: Instance)
+	local name = instance:GetAttribute("WaterProfile")
+	if typeof(name) == "string" and PROFILES[name] then
+		return PROFILES[name]
+	end
+	return PROFILES.SmallProp
+end
+
+local function getObjectSize(state: InteractableState): Vector3
+	if state.model then
+		return state.model:GetExtentsSize()
+	end
+	return state.root.Size
+end
+
+local function getSampleOffsets(state: InteractableState, sampleCount: number): { Vector3 }
+	if sampleCount <= 1 then
+		return { Vector3.zero }
+	end
+
+	local size = getObjectSize(state)
+	local halfX = math.max(size.X * 0.4, 0.5)
+	local halfZ = math.max(size.Z * 0.4, 0.5)
+
+	if sampleCount <= 3 then
+		return {
+			Vector3.zero,
+			Vector3.new(0, 0, -halfZ),
+			Vector3.new(0, 0, halfZ),
+		}
+	end
+
+	if sampleCount <= 6 then
+		return {
+			Vector3.new(-halfX, 0, -halfZ),
+			Vector3.new(halfX, 0, -halfZ),
+			Vector3.new(-halfX, 0, 0),
+			Vector3.new(halfX, 0, 0),
+			Vector3.new(-halfX, 0, halfZ),
+			Vector3.new(halfX, 0, halfZ),
+		}
+	end
+
+	return {
+		Vector3.new(-halfX, 0, -halfZ),
+		Vector3.new(0, 0, -halfZ),
+		Vector3.new(halfX, 0, -halfZ),
+		Vector3.new(-halfX, 0, halfZ),
+		Vector3.new(0, 0, halfZ),
+		Vector3.new(halfX, 0, halfZ),
+		Vector3.new(-halfX, 0, 0),
+		Vector3.new(halfX, 0, 0),
+	}
+end
+
+local function sampleObject(state: InteractableState, profile)
+	local override = state.instance:GetAttribute("WaterSampleCount")
+	local sampleCount = profile.SampleCount
+	if typeof(override) == "number" then
+		sampleCount = math.clamp(math.floor(override), 1, 8)
+	end
+
+	local offsets = getSampleOffsets(state, sampleCount)
+	local time = WaterWaveSampler.GetTime()
+	local totalHeight = 0
+	local totalNormal = Vector3.zero
+	local frontHeight = 0
+	local rearHeight = 0
+	local leftHeight = 0
+	local rightHeight = 0
+	local frontCount = 0
+	local rearCount = 0
+	local leftCount = 0
+	local rightCount = 0
+
+	local sampleFrame = CFrame.Angles(0, state.yaw, 0)
+	for _, localOffset in offsets do
+		local worldPoint = state.root.Position + sampleFrame:VectorToWorldSpace(localOffset)
+		local sample = WaterWaveSampler.Sample(
+			worldPoint.X,
+			worldPoint.Z,
+			time,
+			profile.Octaves
+		)
+		totalHeight += sample.Height
+		totalNormal += sample.Normal
+
+		if localOffset.Z < -0.01 then
+			frontHeight += sample.Height
+			frontCount += 1
+		elseif localOffset.Z > 0.01 then
+			rearHeight += sample.Height
+			rearCount += 1
+		end
+		if localOffset.X < -0.01 then
+			leftHeight += sample.Height
+			leftCount += 1
+		elseif localOffset.X > 0.01 then
+			rightHeight += sample.Height
+			rightCount += 1
+		end
+	end
+
+	local averageHeight = totalHeight / #offsets
+	local normal = (totalNormal / #offsets).Unit
+	if #offsets > 1 then
+		local size = getObjectSize(state)
+		local depth = math.max(size.Z * 0.8, 1)
+		local width = math.max(size.X * 0.8, 1)
+		local averageFront = if frontCount > 0 then frontHeight / frontCount else averageHeight
+		local averageRear = if rearCount > 0 then rearHeight / rearCount else averageHeight
+		local averageLeft = if leftCount > 0 then leftHeight / leftCount else averageHeight
+		local averageRight = if rightCount > 0 then rightHeight / rightCount else averageHeight
+		normal = Vector3.new(
+			-(averageRight - averageLeft) / width,
+			1,
+			(averageFront - averageRear) / depth
+		).Unit
+	end
+
+	return averageHeight, sampleFrame:VectorToWorldSpace(normal)
 end
 
 local function movePose(state: InteractableState, targetY: number, rotation: CFrame)
@@ -131,12 +266,6 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 	end
 
 	local root = state.root
-	local offset = getNumberAttribute(instance, "WaterVerticalOffset", 0)
-	local strength = math.max(
-		0,
-		getNumberAttribute(instance, "WaterBuoyancyStrength", 1)
-	)
-
 	local horizontalDistance = (
 		Vector2.new(root.Position.X, root.Position.Z)
 		- Vector2.new(cameraPosition.X, cameraPosition.Z)
@@ -145,27 +274,33 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 		return
 	end
 
-	local sample = WaterWaveSampler.Sample(
-		root.Position.X,
-		root.Position.Z,
-		WaterWaveSampler.GetTime(),
-		SAMPLE_OCTAVES
-	)
-	local targetY = WaterConfig.GetSurfaceY() + sample.Height * strength + offset
-	local alpha = 1 - math.exp(-POSITION_RESPONSE * dt)
-	state.currentY = state.currentY + (targetY - state.currentY) * alpha
+	local profile = getProfile(instance)
+	state.updateTimer -= dt
+	if state.updateTimer <= 0 then
+		local offset = getNumberAttribute(instance, "WaterVerticalOffset", 0)
+		local strength = math.max(
+			0,
+			getNumberAttribute(instance, "WaterBuoyancyStrength", 1)
+		)
+		local height, normal = sampleObject(state, profile)
+		state.targetY = WaterConfig.GetSurfaceY() + height * strength + offset
 
-	local rotationStrength = math.max(
-		0,
-		getNumberAttribute(instance, "WaterRotationStrength", 1)
-	)
-	local yawFrame = CFrame.Angles(0, state.yaw, 0)
-	local localNormal = yawFrame:VectorToObjectSpace(sample.Normal)
-	local pitch = -math.atan2(localNormal.Z, localNormal.Y) * rotationStrength
-	local roll = math.atan2(localNormal.X, localNormal.Y) * rotationStrength
-	local targetRotation = yawFrame * CFrame.Angles(pitch, 0, roll)
+		local rotationStrength = math.max(
+			0,
+			getNumberAttribute(instance, "WaterRotationStrength", 1)
+		)
+		local yawFrame = CFrame.Angles(0, state.yaw, 0)
+		local localNormal = yawFrame:VectorToObjectSpace(normal)
+		local pitch = -math.atan2(localNormal.Z, localNormal.Y) * rotationStrength
+		local roll = math.atan2(localNormal.X, localNormal.Y) * rotationStrength
+		state.targetRotation = yawFrame * CFrame.Angles(pitch, 0, roll)
+		state.updateTimer = 1 / profile.UpdateHz
+	end
+
+	local alpha = 1 - math.exp(-POSITION_RESPONSE * dt)
+	state.currentY = state.currentY + (state.targetY - state.currentY) * alpha
 	local rotationAlpha = 1 - math.exp(-ROTATION_RESPONSE * dt)
-	state.currentRotation = state.currentRotation:Lerp(targetRotation, rotationAlpha)
+	state.currentRotation = state.currentRotation:Lerp(state.targetRotation, rotationAlpha)
 
 	movePose(state, state.currentY, state.currentRotation)
 end
