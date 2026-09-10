@@ -7,10 +7,13 @@ if not item then
 	return
 end
 
-local root = if item:IsA("BasePart") then item elseif item:IsA("Model") then item.PrimaryPart else nil
+local root = if item:IsA("BasePart") then item elseif item:IsA("Model") then (item.PrimaryPart or item:FindFirstChild("HumanoidRootPart")) else nil
 if not root or not root:IsA("BasePart") then
 	warn("[SlimePickup] Slime must be a BasePart or a Model with PrimaryPart")
 	return
+end
+if item:IsA("Model") and not item.PrimaryPart then
+	item.PrimaryPart = root
 end
 
 CollectionService:AddTag(item, "WaterInteractable")
