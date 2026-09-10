@@ -169,7 +169,6 @@ local INITIAL_FREQ = 0.12
 local INITIAL_SPEED = 1.5
 local BASE_STEEPNESS = 1.2
 local SWELL_BASELINE = 0.4197820789351331
-local WATER_SURFACE_Y_OFFSET = -0.5
 
 local AMP_MULT = 0.82
 local FREQ_MULT = 1.18
@@ -260,30 +259,29 @@ local COLOR_STEPS = 48
 -- OPTIONAL FAR WATER
 --==============================================================
 
--- Cheap flat world-locked water underneath the detailed simulation.
--- This does NOT rotate with the camera.
+-- Cheap flat world-locked water surrounding the detailed simulation.
+-- It moves on the same grid as the detailed mesh and never follows camera
+-- rotation, preventing the dark fill from sliding beneath transparent water.
 
 local FAR_FILL_ENABLED = true
 
-local FAR_TILE_SIZE = 1800
+-- The ring reaches 4,500 studs from its center in each direction, matching
+-- the previous 9,000 x 9,000 coverage area.
+local FAR_WATER_OUTER_HALF_SIZE = 4500
+local FAR_WATER_INNER_HALF_SIZE = HALF_WATER_SIZE
+local FAR_WATER_BAND_SIZE =
+	FAR_WATER_OUTER_HALF_SIZE
+	- FAR_WATER_INNER_HALF_SIZE
+local FAR_WATER_BAND_CENTER =
+	FAR_WATER_INNER_HALF_SIZE
+	+ FAR_WATER_BAND_SIZE * 0.5
 
--- 2 = 5 x 5 cheap tiles around the camera-projected target.
--- This gives roughly 9000 x 9000 studs of far-ocean coverage without
--- increasing EditableMesh memory usage.
-local FAR_TILE_RADIUS = 2
-
--- Keep the cheap far ocean very close to the average water plane so the
--- transition from the detailed mesh is harder to notice.
-local FAR_WATER_Y_OFFSET = -0.10
+-- Keep the ring just below the average plane. It touches the detailed mesh
+-- only at its outer boundary instead of overlapping its full footprint.
+local FAR_WATER_Y_OFFSET = -0.15
 
 -- Distant water does not need to reveal the baseplate underneath it.
 local FAR_WATER_TRANSPARENCY = 0.08
-
--- Clamp how far ahead the far-water target can move when looking toward
--- the horizon from very high places.
-local FAR_TARGET_MIN_LEAD = 1200
-local FAR_TARGET_MAX_LEAD = 7000
-local FAR_TARGET_HEIGHT_MULTIPLIER = 6
 
 --==============================================================
 -- QUALITY
@@ -1137,160 +1135,129 @@ waterFolder:SetAttribute(
 --==============================================================
 
 local farTiles: { Part } = {}
+local farTileOffsets: { Vector3 } = {}
+
+local function createFarTile(
+	name: string,
+	size: Vector3,
+	offset: Vector3
+)
+	local tile =
+		Instance.new("Part")
+
+	tile.Name =
+		name
+
+	tile.Anchored =
+		true
+
+	tile.CanCollide =
+		false
+
+	tile.CanTouch =
+		false
+
+	tile.CanQuery =
+		false
+
+	tile.CastShadow =
+		false
+
+	tile.Size =
+		size
+
+	tile.Material =
+		Enum.Material.Glass
+
+	tile.Color =
+		midColor
+
+	tile.Transparency =
+		FAR_WATER_TRANSPARENCY
+
+	tile.Parent =
+		waterFolder
+
+	table.insert(
+		farTiles,
+		tile
+	)
+
+	table.insert(
+		farTileOffsets,
+		offset
+	)
+end
 
 if FAR_FILL_ENABLED then
+	local outerDiameter =
+		FAR_WATER_OUTER_HALF_SIZE * 2
 
-	for z = -FAR_TILE_RADIUS, FAR_TILE_RADIUS do
+	local innerDiameter =
+		FAR_WATER_INNER_HALF_SIZE * 2
 
-		for x = -FAR_TILE_RADIUS, FAR_TILE_RADIUS do
+	createFarTile(
+		"FarWaterNorth",
+		Vector3.new(
+			outerDiameter,
+			0.05,
+			FAR_WATER_BAND_SIZE
+		),
+		Vector3.new(
+			0,
+			0,
+			-FAR_WATER_BAND_CENTER
+		)
+	)
 
-			local tile =
-				Instance.new("Part")
+	createFarTile(
+		"FarWaterSouth",
+		Vector3.new(
+			outerDiameter,
+			0.05,
+			FAR_WATER_BAND_SIZE
+		),
+		Vector3.new(
+			0,
+			0,
+			FAR_WATER_BAND_CENTER
+		)
+	)
 
-			tile.Name =
-				"FarWater"
+	createFarTile(
+		"FarWaterWest",
+		Vector3.new(
+			FAR_WATER_BAND_SIZE,
+			0.05,
+			innerDiameter
+		),
+		Vector3.new(
+			-FAR_WATER_BAND_CENTER,
+			0,
+			0
+		)
+	)
 
-			tile.Anchored =
-				true
-
-			tile.CanCollide =
-				false
-
-			tile.CanTouch =
-				false
-
-			tile.CanQuery =
-				false
-
-			tile.CastShadow =
-				false
-
-			tile.Size =
-				Vector3.new(
-					FAR_TILE_SIZE,
-					0.05,
-					FAR_TILE_SIZE
-				)
-
-			tile.Material =
-				Enum.Material.Glass
-
-			tile.Color =
-				midColor
-
-			tile.Transparency =
-				FAR_WATER_TRANSPARENCY
-
-			tile.Parent =
-				waterFolder
-
-			table.insert(
-				farTiles,
-				tile
-			)
-		end
-	end
+	createFarTile(
+		"FarWaterEast",
+		Vector3.new(
+			FAR_WATER_BAND_SIZE,
+			0.05,
+			innerDiameter
+		),
+		Vector3.new(
+			FAR_WATER_BAND_CENTER,
+			0,
+			0
+		)
+	)
 end
 
 local lastFarAnchorX: number? = nil
 local lastFarAnchorZ: number? = nil
 
--- Find the part of the ocean the CAMERA actually cares about rather than
--- always centering the far ocean directly underneath the player.
---
--- When looking downward, project the camera ray onto the water plane.
--- When looking near-horizontal/upward, push the target forward based on
--- camera height so climbing a mountain does not expose the baseplate ahead.
-local function getCameraWaterTarget(
-	camera: Camera,
-	surfaceY: number
-): Vector3
-
-	local cameraCFrame =
-		camera.CFrame
-
-	local position =
-		cameraCFrame.Position
-
-	local look =
-		cameraCFrame.LookVector
-
-	-- Looking downward: calculate the exact point where the view ray meets
-	-- the average water plane.
-	if look.Y < -0.01 then
-
-		local rayDistance =
-			(surfaceY - position.Y)
-			/ look.Y
-
-		if rayDistance > 0 then
-
-			rayDistance =
-				m_clamp(
-					rayDistance,
-					0,
-					FAR_TARGET_MAX_LEAD
-				)
-
-			local target =
-				position
-				+ look * rayDistance
-
-			return Vector3.new(
-				target.X,
-				surfaceY,
-				target.Z
-			)
-		end
-	end
-
-	-- Looking near the horizon or upward: use horizontal camera direction
-	-- and increase the forward lead as the camera climbs higher.
-	local horizontalLook =
-		Vector3.new(
-			look.X,
-			0,
-			look.Z
-		)
-
-	if horizontalLook.Magnitude < 0.001 then
-
-		return Vector3.new(
-			position.X,
-			surfaceY,
-			position.Z
-		)
-	end
-
-	horizontalLook =
-		horizontalLook.Unit
-
-	local cameraHeight =
-		m_max(
-			0,
-			position.Y - surfaceY
-		)
-
-	local leadDistance =
-		m_clamp(
-			FAR_TARGET_MIN_LEAD
-			+ cameraHeight * FAR_TARGET_HEIGHT_MULTIPLIER,
-			FAR_TARGET_MIN_LEAD,
-			FAR_TARGET_MAX_LEAD
-		)
-
-	return
-		Vector3.new(
-			position.X,
-			surfaceY,
-			position.Z
-		)
-		+ horizontalLook * leadDistance
-end
-
-
 local function updateFarWater(
-	camera: Camera,
+	cameraPosition: Vector3,
 	surfaceY: number
 )
 
@@ -1298,27 +1265,21 @@ local function updateFarWater(
 		return
 	end
 
-	local target =
-		getCameraWaterTarget(
-			camera,
-			surfaceY
-		)
-
-	-- Snap the cheap far-ocean grid in full tile increments. It therefore
-	-- does not jitter with tiny camera movements or rotate with the camera.
+	-- Use the same anchor grid as the detailed mesh. Translation moves both
+	-- sections together, while camera rotation does not move either one.
 	local anchorX =
 		m_round(
-			target.X
-			/ FAR_TILE_SIZE
+			cameraPosition.X
+			/ LOGICAL_CHUNK_SIZE
 		)
-		* FAR_TILE_SIZE
+		* LOGICAL_CHUNK_SIZE
 
 	local anchorZ =
 		m_round(
-			target.Z
-			/ FAR_TILE_SIZE
+			cameraPosition.Z
+			/ LOGICAL_CHUNK_SIZE
 		)
-		* FAR_TILE_SIZE
+		* LOGICAL_CHUNK_SIZE
 
 	if
 		anchorX == lastFarAnchorX
@@ -1327,27 +1288,16 @@ local function updateFarWater(
 		return
 	end
 
-	local index = 1
+	for index, tile in ipairs(farTiles) do
+		local offset =
+			farTileOffsets[index]
 
-	for z = -FAR_TILE_RADIUS, FAR_TILE_RADIUS do
-
-		for x = -FAR_TILE_RADIUS, FAR_TILE_RADIUS do
-
-			farTiles[index].CFrame =
-				CFrame.new(
-
-					anchorX
-					+ x * FAR_TILE_SIZE,
-
-					surfaceY
-					+ FAR_WATER_Y_OFFSET,
-
-					anchorZ
-					+ z * FAR_TILE_SIZE
-				)
-
-			index += 1
-		end
+		tile.CFrame =
+			CFrame.new(
+				anchorX + offset.X,
+				surfaceY + FAR_WATER_Y_OFFSET,
+				anchorZ + offset.Z
+			)
 	end
 
 	lastFarAnchorX =
@@ -2254,7 +2204,7 @@ RunService:BindToRenderStep(
 			)
 
 		updateFarWater(
-			camera,
+			cameraPosition,
 			surfaceY
 		)
 
