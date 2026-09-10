@@ -25,11 +25,8 @@ local waterSounds = ReplicatedStorage
 	:WaitForChild("Water")
 local splashEvent = ReplicatedStorage:WaitForChild("WaterSplashRingEvent")
 
-local splashTemplate = waterSounds:WaitForChild("WaterSplashEntry")
-assert(
-	splashTemplate:IsA("Sound"),
-	"ReplicatedStorage.Shared.Sounds.Water.WaterSplashEntry must be a Sound"
-)
+local shallowFootstepTemplate = waterSounds:WaitForChild("ShallowFootsteps")
+assert(shallowFootstepTemplate:IsA("Sound"), "ReplicatedStorage.Shared.Sounds.Water.ShallowFootsteps must be a Sound")
 
 local player = Players.LocalPlayer
 
@@ -52,6 +49,7 @@ local waterFootstep: Sound? = nil
 local descendantConnection: RBXScriptConnection? = nil
 local savedRunningVolumes: { [Sound]: number } = {}
 local stepClock = 0
+local shallowStopClock = 0
 
 local function isRunningSound(instance: Instance): boolean
 	return instance:IsA("Sound") and instance.Name == "Running"
@@ -96,19 +94,20 @@ local function setupCharacter(newCharacter: Model)
 	humanoid = newCharacter:WaitForChild("Humanoid") :: Humanoid
 	rootPart = newCharacter:WaitForChild("HumanoidRootPart") :: BasePart
 
-	local sound = splashTemplate:Clone()
-	sound.Name = "WaterFootstep_Local"
-	sound.Looped = false
-	sound.Volume *= STEP_VOLUME_SCALE
-	sound.Parent = rootPart
-	sound:Stop()
-	waterFootstep = sound
+	local shallowSound = shallowFootstepTemplate:Clone()
+	shallowSound.Name = "ShallowFootsteps_Local"
+	shallowSound.Looped = true
+	shallowSound.Volume *= STEP_VOLUME_SCALE
+	shallowSound.Parent = rootPart
+	shallowSound:Stop()
+	waterFootstep = shallowSound
 
 	for _, descendant in newCharacter:GetDescendants() do
 		muteRunningSound(descendant)
 	end
 	descendantConnection = newCharacter.DescendantAdded:Connect(muteRunningSound)
 	stepClock = 0
+	shallowStopClock = 0
 end
 
 local function getFootParts(currentCharacter: Model): { BasePart }
@@ -156,7 +155,6 @@ local function playWaterStep(speed: number, foot: BasePart?, ringSurfaceY: numbe
 	end
 
 	sound.PlaybackSpeed = math.clamp(0.9 + speed / 24, 0.9, 1.45)
-	sound.TimePosition = 0
 	sound:Play()
 	if foot and ringSurfaceY then
 		splashEvent:FireServer(
@@ -183,6 +181,10 @@ RunService.Heartbeat:Connect(function(deltaTime)
 	if not touchingWater then
 		restoreRunningSounds()
 		stepClock = 0
+		shallowStopClock = 0
+		if waterFootstep then
+			waterFootstep:Stop()
+		end
 		return
 	end
 
@@ -196,8 +198,13 @@ RunService.Heartbeat:Connect(function(deltaTime)
 	local moving = currentHumanoid.MoveDirection.Magnitude > 0.05
 	if not moving or currentHumanoid.FloorMaterial == Enum.Material.Air then
 		stepClock = 0
+		shallowStopClock += deltaTime
+		if shallowStopClock >= 1 and waterFootstep then
+			waterFootstep:Stop()
+		end
 		return
 	end
+	shallowStopClock = 0
 
 	stepClock -= deltaTime
 	if stepClock <= 0 then
