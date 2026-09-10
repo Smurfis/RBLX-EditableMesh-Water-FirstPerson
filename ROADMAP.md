@@ -23,6 +23,7 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Shallow-water footsteps follow the shared animated surface at each foot.
 - [x] Shoreline footsteps emit small replicated rings at the contacting foot.
 - [x] Footprint rings use per-foot animated surface contact and a raised CoastLine placement.
+- [x] Footprint contact height is centralised and tuned to the measured shoreline plane Y=7.458.
 - [x] Footprint rings use a distinct non-ForceField material.
 - [x] Replicated splash rings emit size-appropriate centre particle bursts using the supplied rainsplash texture.
 

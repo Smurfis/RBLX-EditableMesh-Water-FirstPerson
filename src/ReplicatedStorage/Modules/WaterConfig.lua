@@ -38,6 +38,9 @@ WaterConfig.Swimming = {
 		RestoreResponse = 6,
 		MaxRestoreSpeed = 4,
 		DescendInputThreshold = -0.1,
+		-- Measured lower-CoastLine foot contact for the current shoreline test.
+		-- Base surface Y=6 plus this offset gives Y=7.458.
+		FootContactOffset = 1.458,
 	},
 }
 

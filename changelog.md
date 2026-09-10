@@ -227,7 +227,9 @@ Shallow-water walking audio now checks the shared animated wave height at each f
 
 Walking just above the shoreline now also emits a small replicated `WaterFootstepRing` at the detected foot. These rings start slightly above CoastLine, settle into the waterline and fade quickly, creating a subtle bubble/splash contact without using the heavier entry effect.
 
-Footprint placement now uses the sampled animated surface directly below the contacting foot. Audio can remain active across a broad shallow-water band, but a ring is emitted only when the foot is within 0.45 studs above that wave surface; the ring starts 0.16 studs above contact and settles by 0.08 studs for a higher, more convincing CoastLine touch.
+Footprint placement uses the sampled animated surface for shallow-water audio while the ring eligibility is tuned to the measured lower-CoastLine contact plane. Audio can remain active across a broad shallow-water band, but a ring is emitted only when the foot is at or just below that contact plane; it starts slightly above contact and settles into the CoastLine touch.
+
+The foot contact plane is now explicitly tuned to the measured shoreline marker at Y=7.458 (`WaterConfig.Swimming.SurfaceTest.FootContactOffset = 1.458` for the current base surface Y=6). Foot rings emit at or below that plane, then settle from 0.08 studs above it.
 
 Footstep rings use `SmoothPlastic` instead of the ForceField material used by entry and paddle rings, making the smaller shoreline contacts visibly distinct.
 

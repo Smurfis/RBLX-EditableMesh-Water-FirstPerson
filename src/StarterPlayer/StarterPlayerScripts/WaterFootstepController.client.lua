@@ -35,8 +35,9 @@ local player = Players.LocalPlayer
 
 local FOOT_WATER_DEPTH = 4
 local FOOT_WATER_MARGIN = 1.0
-local FOOT_RING_MAX_ABOVE_SURFACE = 0.45
-local FOOT_RING_HEIGHT_OFFSET = 0.16
+local FOOT_RING_CONTACT_TOLERANCE = 0.05
+local FOOT_RING_HEIGHT_OFFSET = 0.08
+local FOOT_CONTACT_OFFSET = WaterConfig.Swimming.SurfaceTest.FootContactOffset or 1.458
 local MIN_ROOT_HEIGHT_ABOVE_SURFACE = 0.4
 local MAX_ROOT_HEIGHT_ABOVE_SURFACE = 5.0
 local MIN_STEP_INTERVAL = 0.24
@@ -137,8 +138,10 @@ local function feetTouchWater(currentCharacter: Model, currentRoot: BasePart): (
 		if footY <= animatedSurfaceY + FOOT_WATER_MARGIN
 			and footY >= animatedSurfaceY - FOOT_WATER_DEPTH
 		then
-			local ringSurfaceY = if footY <= animatedSurfaceY + FOOT_RING_MAX_ABOVE_SURFACE
-				then animatedSurfaceY
+			local footContactY = surfaceY + FOOT_CONTACT_OFFSET
+			local ringSurfaceY = if footY <= footContactY + FOOT_RING_CONTACT_TOLERANCE
+				and footY >= footContactY - FOOT_WATER_DEPTH
+				then footContactY
 				else nil
 			return true, foot, ringSurfaceY
 		end
