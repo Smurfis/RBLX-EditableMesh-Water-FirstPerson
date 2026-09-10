@@ -178,7 +178,7 @@ local waterPart =
 	waterPartTemplate:Clone()
 
 waterPart.Name =
-	"WaterPart"
+	"SurfaceWaterVFX"
 
 waterPart.Anchored =
 	true
@@ -206,7 +206,7 @@ local coastline =
 	coastlineTemplate:Clone()
 
 coastline.Name =
-	"CoastLine"
+	"CoastlineFoamVFX"
 
 coastline.Anchored =
 	true

@@ -233,7 +233,7 @@ local WATER_COASTLINE_COLOR = Color3.fromRGB(236, 235, 226)
 local WATER_COASTLINE_TRANSPARENCY = 0
 
 -- Temporary isolation switch while diagnosing the camera-angle visual bug.
--- Keep the generated WaveLines instance in the folder so this test can be
+-- Keep the generated WaveFoamVFX instance in the folder so this test can be
 -- reversed without rebuilding the renderer's layer structure.
 local HIDE_GENERATED_WAVELINES = false
 
@@ -1040,7 +1040,7 @@ end
 -- Lowest/darkest pass.
 local waterBaseMesh =
 	createWaterLayer(
-		"WaterPart",
+		"WaterBase",
 		WATER_BASE_COLOR,
 		WATER_BASE_TRANSPARENCY
 	)
@@ -1048,7 +1048,7 @@ local waterBaseMesh =
 -- Light/refraction pass.
 local waterMiddleMesh =
 	createWaterLayer(
-		"WaterPart2",
+		"WaterMiddle",
 		WATER_MIDDLE_COLOR,
 		WATER_MIDDLE_TRANSPARENCY
 	)
@@ -1056,7 +1056,7 @@ local waterMiddleMesh =
 -- Main readable animated surface.
 local waterMesh =
 	createWaterLayer(
-		"WaterPart3",
+		"WaterSurface",
 		WATER_SURFACE_COLOR,
 		WATER_SURFACE_TRANSPARENCY
 	)
@@ -1065,7 +1065,7 @@ local waterMesh =
 -- attempts to reproduce the bright stylized intersection/rim effect.
 local waveLinesMesh =
 	createWaterLayer(
-		"WaveLines",
+		"WaveFoamVFX",
 		WATER_COASTLINE_COLOR,
 		WATER_COASTLINE_TRANSPARENCY
 	)
