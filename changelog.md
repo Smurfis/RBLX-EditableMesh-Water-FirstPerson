@@ -225,6 +225,8 @@ Slime now supports Model setups using its `HumanoidRootPart` as PrimaryPart and 
 
 Added lightweight client-only underwater bubbles. ForceField spheres spawn at a distance from the camera, rise, expand, and fade without collision.
 
+Swimming now explicitly plays Roblox's built-in swim animation across surface and underwater movement, then fades it out on exit so the normal standing pose returns.
+
 While held, Slime no longer collides with the player, and pressing `E` again throws it forward with an upward impulse. Experimental arm posing was removed until a proper authored animation is available.
 
 Slime now receives a faint `(255, 212, 138)` hover highlight and a matching falling trail that disables when it reaches the water.

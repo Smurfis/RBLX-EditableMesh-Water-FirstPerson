@@ -174,6 +174,29 @@ local BUOYANCY_RELEASE_END_Y =
 local humanoid: Humanoid? =
 	nil
 
+local swimAnimationTrack: AnimationTrack? = nil
+
+local function setSwimAnimationEnabled(enabled: boolean)
+	local currentHumanoid = humanoid
+	if not currentHumanoid then return end
+	local animator = currentHumanoid:FindFirstChildOfClass("Animator")
+	if not animator then return end
+	if enabled then
+		if swimAnimationTrack and swimAnimationTrack.IsPlaying then return end
+		local animation = Instance.new("Animation")
+		animation.AnimationId = "rbxassetid://507784897"
+		swimAnimationTrack = animator:LoadAnimation(animation)
+		swimAnimationTrack.Priority = Enum.AnimationPriority.Movement
+		swimAnimationTrack.Looped = true
+		swimAnimationTrack:Play(0.2)
+	else
+		if swimAnimationTrack then
+			swimAnimationTrack:Stop(0.2)
+			swimAnimationTrack = nil
+		end
+	end
+end
+
 local rootPart: BasePart? =
 	nil
 
@@ -669,6 +692,7 @@ local function enterSwimming()
 
 	bodyInWater =
 		true
+	setSwimAnimationEnabled(true)
 
 	-- Fresh cycle - any leftover post-exit coast-out is no longer
 	-- relevant once we're actively swimming again.
@@ -714,6 +738,7 @@ local function exitSwimming()
 
 	bodyInWater =
 		false
+	setSwimAnimationEnabled(false)
 
 	-- Preserve the exit handoff until buoyancy has reached zero. Keeping
 	-- this state separate prevents buoyancy from affecting a new fall.
