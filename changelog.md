@@ -235,7 +235,7 @@ Footstep rings use `SmoothPlastic` instead of the ForceField material used by en
 
 Shallow walking now uses the Studio-managed `ShallowFootsteps` sound. Its three-second clip loops while movement continues, plays for up to one second after a short movement, and stops when the player leaves the shallow-water band. The per-foot shoreline rings remain tied to the movement cadence.
 
-When movement stops, the sound now finishes its current one-, two- or three-second pass naturally instead of being abruptly stopped; it only loops again when shallow movement resumes.
+When movement stops, the sound now pauses immediately at its current position instead of continuing through the rest of the clip; it resumes and loops again when shallow movement resumes.
 
 The shallow sound no longer restarts on every footstep tick, preventing rapid looping. A single delayed exit ring and particle burst is also emitted when the player leaves the pool, allowing a clean jump-out and re-entry effect without repeated triggers.
 

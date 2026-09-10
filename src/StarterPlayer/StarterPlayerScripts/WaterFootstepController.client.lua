@@ -220,14 +220,17 @@ RunService.Heartbeat:Connect(function(deltaTime)
 	local moving = currentHumanoid.MoveDirection.Magnitude > 0.05
 	if not moving or currentHumanoid.FloorMaterial == Enum.Material.Air then
 		stepClock = 0
-		-- Finish the current three-second sample instead of cutting it off.
 		if waterFootstep and waterFootstep.IsPlaying then
 			waterFootstep.Looped = false
+			waterFootstep:Pause()
 		end
 		return
 	end
 	if waterFootstep then
 		waterFootstep.Looped = true
+		if waterFootstep.PlaybackState == Enum.PlaybackState.Paused then
+			waterFootstep:Resume()
+		end
 	end
 
 	stepClock -= deltaTime

@@ -26,7 +26,7 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Footprint contact height is centralised and tuned to the measured shoreline plane Y=7.458.
 - [x] Footprint rings use a distinct non-ForceField material.
 - [x] Shallow walking uses the looping `ShallowFootsteps` Studio sound with a one-second release window.
-- [x] Shallow footsteps finish their current audio pass when movement stops, while looping continues during movement.
+- [x] Shallow footsteps pause immediately when movement stops and resume while movement continues.
 - [x] Shallow sound starts once per movement pass, with a delayed single exit ring/particle burst.
 - [x] Roblox running sounds are stopped while shallow-water footsteps are active and restored on exit.
 - [x] Shallow eligibility includes the calibrated foot-contact plane for near-surface ledges.
