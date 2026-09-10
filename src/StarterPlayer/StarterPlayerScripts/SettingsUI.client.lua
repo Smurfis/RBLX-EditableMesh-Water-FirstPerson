@@ -184,37 +184,10 @@ local function createToggle(
 	defaultValue: boolean,
 	callback: (boolean) -> ()
 ): Frame
-	local frame = Instance.new("Frame")
-	frame.Name = name
-	frame.Size = UDim2.new(1, -8, 0, 40)
-	frame.BackgroundTransparency = 1
-	frame.LayoutOrder = 2
-	frame.Parent = scroll
-
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, 0, 1, 0)
-	button.BackgroundColor3 = Color3.fromRGB(48, 60, 74)
-	button.TextColor3 = Color3.fromRGB(255, 255, 255)
-	button.Font = Enum.Font.Gotham
-	button.TextSize = 14
-	button.AutoButtonColor = true
-	button.Parent = frame
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
-
-	local enabled = defaultValue
-	local function setValue(value: boolean)
-		enabled = value
-		button.Text = string.format("%s: %s", labelText, if enabled then "On" else "Off")
-		button.BackgroundColor3 = if enabled
-			then Color3.fromRGB(55, 105, 90)
-			else Color3.fromRGB(48, 60, 74)
-		callback(enabled)
-	end
-	button.Activated:Connect(function()
-		setValue(not enabled)
-	end)
-	setValue(defaultValue)
-	return frame
+	local checkbox = Checkbox.new(scroll, labelText, defaultValue, callback)
+	checkbox.Frame.Name = name
+	checkbox.Frame.LayoutOrder = 2
+	return checkbox.Frame
 end
 
 createToggle("RemoveCoastlineEffectToggle", "Remove CoastLine Effect", false, function(removed)
@@ -222,7 +195,7 @@ createToggle("RemoveCoastlineEffectToggle", "Remove CoastLine Effect", false, fu
 end)
 
 createToggle("TransparentOceanToggle", "Transparent Ocean", false, function(enabled)
-	setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "TransparentOcean", enabled)
+	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "Enabled", not enabled)
 end)
 
 createSlider("WaveFoamTransparencySlider", "Wave foam transparency", 0, function(value)
@@ -235,6 +208,52 @@ createSlider("CoastlineTransparencySlider", "Coastline visibility", 1, function(
 	local transparency = 1 - value * (1 - COASTLINE_MIN_TRANSPARENCY)
 	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "TransparencyOverride", transparency)
 end)
+
+local OCEAN_MODES = {
+	["CALM OCEAN"] = {
+		FoamTransparency = 0.63,
+		CoastlineTransparency = 0.29,
+		WaterOpacity = 0.75,
+	},
+	["WIND WAKER"] = {
+		FoamTransparency = 0,
+		CoastlineTransparency = COASTLINE_MIN_TRANSPARENCY,
+		WaterOpacity = 0.75,
+	},
+}
+
+local calmOceanToggle: Checkbox.Checkbox?
+local windWakerToggle: Checkbox.Checkbox?
+local function selectOceanMode(modeName: string)
+	local mode = OCEAN_MODES[modeName]
+	if not mode then
+		return
+	end
+	container:SetAttribute("OceanVisualMode", modeName)
+	container:SetAttribute("WaterOpacity", mode.WaterOpacity)
+	setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "WaveFoamTransparencyOverride", mode.FoamTransparency)
+	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "TransparencyOverride", mode.CoastlineTransparency)
+	if modeName == "CALM OCEAN" and windWakerToggle and windWakerToggle.Value then
+		windWakerToggle:Set(false)
+	elseif modeName == "WIND WAKER" and calmOceanToggle and calmOceanToggle.Value then
+		calmOceanToggle:Set(false)
+	end
+end
+
+calmOceanToggle = Checkbox.new(scroll, "CALM OCEAN", false, function(enabled)
+	if enabled then
+		selectOceanMode("CALM OCEAN")
+	end
+end)
+calmOceanToggle.Frame.Name = "CalmOceanModeToggle"
+
+windWakerToggle = Checkbox.new(scroll, "WIND WAKER", true, function(enabled)
+	if enabled then
+		selectOceanMode("WIND WAKER")
+	end
+end)
+windWakerToggle.Frame.Name = "WindWakerModeToggle"
+container:SetAttribute("OceanVisualMode", "WIND WAKER")
 
 local statusGui = Instance.new("ScreenGui")
 statusGui.Name = "ProjectStatusGui"

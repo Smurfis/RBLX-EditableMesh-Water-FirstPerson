@@ -215,7 +215,7 @@ Compact keybind HUD mode now keeps the key symbols visible (`[=]` and `[M]`) whi
 
 Settings now includes independent `Wave foam transparency` and `Coastline transparency` sliders, initialized to the current visual defaults. The Coastline slider drives both parts inside `__ClientCoastlineEffect` together, preserving their shared fade and movement while allowing the foam and coastline systems to be tuned separately.
 
-Settings also includes `Remove CoastLine Effect` and `Transparent Ocean` toggles. Removing the CoastLine effect detaches both client VFX parts for a performance-friendly off state and restores them when enabled.
+Settings also includes `Remove CoastLine Effect` and `Transparent Ocean` toggles. Both toggles can detach the two client Coastline VFX parts for a performance-friendly transparent-water view and restore them later; the ocean layers themselves remain available for separate transparency tuning.
 
 The Coastline visibility control is inverted for clarity: slider value `1` keeps the effect at its minimum 45% transparency, and the effect can only become more transparent from there.
 
