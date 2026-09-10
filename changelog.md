@@ -227,13 +227,17 @@ Shallow-water walking audio now checks the shared animated wave height at each f
 
 Walking just above the shoreline now also emits a small replicated `WaterFootstepRing` at the detected foot. These rings start slightly above CoastLine, settle into the waterline and fade quickly, creating a subtle bubble/splash contact without using the heavier entry effect.
 
-Footprint placement uses the sampled animated surface for shallow-water audio while the ring eligibility is tuned to the measured lower-CoastLine contact plane. Audio can remain active across a broad shallow-water band, but a ring is emitted only when the foot is at or just below that contact plane; it starts slightly above contact and settles into the CoastLine touch.
+Footprint placement uses the sampled animated surface for shallow-water audio while the ring eligibility is tuned to the measured lower-CoastLine contact plane. Audio can remain active across a broad shallow-water band, and the ring contact tolerance is widened to 0.75 studs so the measured foot position is captured; it starts slightly above contact and settles into the CoastLine touch.
 
 The foot contact plane is now explicitly tuned to the measured shoreline marker at Y=7.458 (`WaterConfig.Swimming.SurfaceTest.FootContactOffset = 1.458` for the current base surface Y=6). Foot rings emit at or below that plane, then settle from 0.08 studs above it.
 
 Footstep rings use `SmoothPlastic` instead of the ForceField material used by entry and paddle rings, making the smaller shoreline contacts visibly distinct.
 
 Shallow walking now uses the Studio-managed `ShallowFootsteps` sound. Its three-second clip loops while movement continues, plays for up to one second after a short movement, and stops when the player leaves the shallow-water band. The per-foot shoreline rings remain tied to the movement cadence.
+
+When movement stops, the sound now finishes its current one-, two- or three-second pass naturally instead of being abruptly stopped; it only loops again when shallow movement resumes.
+
+While shallow water is active, captured Roblox `Running` sounds are now explicitly stopped as well as muted. This prevents the default footstep system from restarting or cutting across `ShallowFootsteps`; normal running sound volume is restored after leaving the water band.
 
 The controller now checks for that Studio sound without an infinite wait. If it is absent or misnamed, it warns once and falls back to `WaterSplashEntry` so shallow-water movement remains functional until `ShallowFootsteps` is placed under `ReplicatedStorage.Shared.Sounds.Water`.
 

@@ -38,7 +38,7 @@ local FOOT_WATER_DEPTH = 4
 -- Keep shallow walking active slightly above the visible wave edge. The
 -- footprint ring still uses the separate calibrated foot-contact plane.
 local FOOT_WATER_MARGIN = 1.4
-local FOOT_RING_CONTACT_TOLERANCE = 0.05
+local FOOT_RING_CONTACT_TOLERANCE = 0.75
 local FOOT_RING_HEIGHT_OFFSET = 0.08
 local FOOT_CONTACT_OFFSET = WaterConfig.Swimming.SurfaceTest.FootContactOffset or 1.458
 local MIN_ROOT_HEIGHT_ABOVE_SURFACE = 0.4
@@ -55,7 +55,6 @@ local waterFootstep: Sound? = nil
 local descendantConnection: RBXScriptConnection? = nil
 local savedRunningVolumes: { [Sound]: number } = {}
 local stepClock = 0
-local shallowStopClock = 0
 
 local function isRunningSound(instance: Instance): boolean
 	return instance:IsA("Sound") and instance.Name == "Running"
@@ -113,7 +112,6 @@ local function setupCharacter(newCharacter: Model)
 	end
 	descendantConnection = newCharacter.DescendantAdded:Connect(muteRunningSound)
 	stepClock = 0
-	shallowStopClock = 0
 end
 
 local function getFootParts(currentCharacter: Model): { BasePart }
@@ -197,6 +195,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
 	for sound in pairs(savedRunningVolumes) do
 		if sound.Parent then
 			sound.Volume = 0
+			if sound.IsPlaying then
+				sound:Stop()
+			end
 		end
 	end
 
@@ -204,13 +205,15 @@ RunService.Heartbeat:Connect(function(deltaTime)
 	local moving = currentHumanoid.MoveDirection.Magnitude > 0.05
 	if not moving or currentHumanoid.FloorMaterial == Enum.Material.Air then
 		stepClock = 0
-		shallowStopClock += deltaTime
-		if shallowStopClock >= 1 and waterFootstep then
-			waterFootstep:Stop()
+		-- Finish the current three-second sample instead of cutting it off.
+		if waterFootstep and waterFootstep.IsPlaying then
+			waterFootstep.Looped = false
 		end
 		return
 	end
-	shallowStopClock = 0
+	if waterFootstep then
+		waterFootstep.Looped = true
+	end
 
 	stepClock -= deltaTime
 	if stepClock <= 0 then
