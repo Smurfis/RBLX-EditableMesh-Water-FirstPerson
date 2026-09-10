@@ -117,6 +117,10 @@ local ACTION_PRIORITY =
 -- Require real downward momentum before playing the impact sound.
 local ENTRY_SPLASH_MIN_FALL_SPEED = 4
 
+-- Once an entry has occurred, require the character to return to solid
+-- ground clearly above the surface before another splash can play.
+local ENTRY_SPLASH_REARM_HEIGHT = 4
+
 
 ----------------------------------------------------------------
 -- GRADUATED EXIT SETTINGS
@@ -156,6 +160,9 @@ local buoyancyForce: VectorForce? =
 
 local entrySplashSound: Sound? =
 	nil
+
+local entrySplashArmed =
+	true
 
 local characterDescendantAddedConnection: RBXScriptConnection? =
 	nil
@@ -297,7 +304,17 @@ end
 local function playEntrySplash(
 	verticalVelocity: number
 )
-	if verticalVelocity > -ENTRY_SPLASH_MIN_FALL_SPEED then
+	local wasArmed =
+		entrySplashArmed
+
+	-- Every water entry consumes the current airborne cycle, including a
+	-- gentle entry. Surface bobbing cannot repeatedly qualify afterward.
+	entrySplashArmed = false
+
+	if
+		not wasArmed
+		or verticalVelocity > -ENTRY_SPLASH_MIN_FALL_SPEED
+	then
 		return
 	end
 
@@ -720,6 +737,7 @@ local function setupCharacter(
 )
 	disconnectDefaultSplashSuppression()
 	entrySplashSound = nil
+	entrySplashArmed = true
 
 	local foundHumanoid =
 		character:WaitForChild(
@@ -1116,6 +1134,15 @@ local function updateSwimming(
 	local rootY =
 		currentRoot.Position.Y
 
+	if
+		not bodyInWater
+		and not entrySplashArmed
+		and rootY >= surfaceY + ENTRY_SPLASH_REARM_HEIGHT
+		and currentHumanoid.FloorMaterial ~= Enum.Material.Air
+	then
+		entrySplashArmed = true
+	end
+
 
 	----------------------------------------------------------------
 	-- WATER ENTRY (unchanged - still relative to surfaceY)
@@ -1307,6 +1334,7 @@ player.CharacterAdded:Connect(
 player.CharacterRemoving:Connect(function()
 	disconnectDefaultSplashSuppression()
 	entrySplashSound = nil
+	entrySplashArmed = false
 
 	humanoid =
 		nil
