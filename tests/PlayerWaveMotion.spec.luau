@@ -100,8 +100,8 @@ for _, hz in { 30, 60, 144 } do
 		step(1 / hz)
 		assert(math.abs(State.Offset) <= Config.PlayerWaveMotion.MaxHeight, "Bobbing exceeded height cap")
 		assert(math.abs(State.Offset - previous) <= Config.PlayerWaveMotion.MaxOffsetSpeed / hz + 1e-9, "Offset changed too fast")
-		assert(math.abs(motor.Transform.Pitch) <= math.rad(6) + 1e-9, "Pitch accumulated/exceeded cap")
-		assert(math.abs(motor.Transform.Roll) <= math.rad(6) + 1e-9, "Roll accumulated/exceeded cap")
+		assert(math.abs(motor.C0.Pitch) <= math.rad(6) + 1e-9, "Pitch accumulated/exceeded cap")
+		assert(math.abs(motor.C0.Roll) <= math.rad(6) + 1e-9, "Roll accumulated/exceeded cap")
 	end
 	assert(count <= 61, "More than 30 samples per second")
 	assert(State.Offset > 0.34, "Different frame rates must approach target height")
@@ -144,5 +144,5 @@ script.Destroying:Fire()
 previousCount = count
 advance(1, 60)
 assert(State.Offset == 0 and count == previousCount, "Destroy must disconnect and restore offset")
-assert(motor.Transform.Pitch == 0 and motor.Transform.Roll == 0, "Destroy must restore the joint")
+assert(motor.C0.Pitch == 0 and motor.C0.Roll == 0, "Destroy must restore the joint")
 print("Player wave motion: cadence, frame rates, caps, dry/seat/dive/disable, death, respawn, cleanup passed")

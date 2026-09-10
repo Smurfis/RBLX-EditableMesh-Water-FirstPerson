@@ -24,18 +24,15 @@ local targetNormal = Vector3.yAxis
 local pitch = 0
 local roll = 0
 local sampleTimer = 0
-local appliedTransform: CFrame? = nil
-local beforeTransform: CFrame? = nil
+local baseC0: CFrame? = nil
 
 local function removeTilt()
 	local currentJoint = joint
 	-- Only remove our last write if animation/another controller has not
-	-- replaced it. This also prevents accumulation on a rig with no Animator.
-	if currentJoint and currentJoint.Parent and beforeTransform and currentJoint.Transform == appliedTransform then
-		currentJoint.Transform = beforeTransform
+	if currentJoint and currentJoint.Parent and baseC0 then
+		currentJoint.C0 = baseC0
 	end
-	appliedTransform = nil
-	beforeTransform = nil
+	baseC0 = nil
 end
 
 local function clearCharacter()
@@ -48,6 +45,7 @@ local function clearCharacter()
 	root = nil
 	humanoid = nil
 	joint = nil
+	baseC0 = nil
 	targetHeight = 0
 	targetNormal = Vector3.yAxis
 	pitch = 0
@@ -79,6 +77,7 @@ local function bindCharacter(character: Model)
 			and (instance.Part1.Name == "LowerTorso" or instance.Part1.Name == "Torso")
 		then
 			joint = instance
+			baseC0 = instance.C0
 		end
 	end
 	-- One character-only scan per spawn; R6 RootJoint and R15 Root supported.
@@ -94,7 +93,7 @@ if player.Character then
 	task.spawn(bindCharacter, player.Character)
 end
 
--- Remove the previous additive layer before the Animator/lean build a new pose.
+	-- Remove the previous base-pose layer before animation/lean updates.
 local preAnimation = RunService.PreAnimation:Connect(removeTilt)
 local preSimulation = RunService.PreSimulation:Connect(function(dt: number)
 	local currentRoot = root
@@ -148,13 +147,12 @@ local preSimulation = RunService.PreSimulation:Connect(function(dt: number)
 	roll += (targetRoll - roll) * alpha
 
 	local currentJoint = joint
-	if currentJoint and currentJoint.Parent and (math.abs(pitch) + math.abs(roll) > 0.0001) then
-		local bindRotation = currentJoint.C0.Rotation
+	if currentJoint and currentJoint.Parent and baseC0 then
+		-- C0 is our stable base pose. CharacterLeanScript and the Animator
+		-- remain free to compose their own per-frame Transform on top.
+		local bindRotation = baseC0.Rotation
 		local tilt = bindRotation:Inverse() * CFrame.Angles(pitch, 0, roll) * bindRotation
-		beforeTransform = currentJoint.Transform
-		local result = tilt * currentJoint.Transform
-		appliedTransform = result
-		currentJoint.Transform = result
+		currentJoint.C0 = baseC0 * tilt
 	end
 end)
 
