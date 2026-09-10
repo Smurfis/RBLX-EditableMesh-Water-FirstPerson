@@ -13,14 +13,17 @@ local wasInWater = false
 local function makeSplash(position: Vector3)
 	local assets = ReplicatedStorage:FindFirstChild("Shared")
 	local template = assets and assets:FindFirstChild("Assets") and assets.Assets:FindFirstChild("SplashRing")
-	if not template or not template:IsA("BasePart") then return end
-	local ring = template:Clone()
+	local ring = if template and template:IsA("BasePart") then template:Clone() else Instance.new("Part")
 	ring.Name = "SlimeWaterSplash"
 	ring.Anchored = true
 	ring.CanCollide = false
 	ring.CanTouch = false
 	ring.CanQuery = false
-	ring.CFrame = CFrame.new(position) * (template.CFrame - template.Position)
+	ring.Size = if template and template:IsA("BasePart") then template.Size else Vector3.new(3, 0.08, 3)
+	if ring:IsA("Part") then
+		ring.Shape = Enum.PartType.Cylinder
+	end
+	ring.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90))
 	ring.Parent = workspace
 	local attachment = Instance.new("Attachment")
 	attachment.Parent = ring
