@@ -183,6 +183,8 @@ Profile names are case-insensitive and `medprop` resolves to `MediumProp`. The t
 
 Added `WaterExitClimbController` as an initial local ledge-climb prototype using the supplied hang animation `14252434075` and climb animation `14240367012`. It uses separate wall and top-surface raycasts to align the character before the climb tween.
 
+Added temporary Studio diagnostics under the `[WaterExitClimb]` prefix for Space input, water eligibility, wall hits, top-ray misses, height rejection, hang entry and climb start.
+
 ### Opt-In Buoyancy and Deformation
 
 - `d4fed6a` added smooth height following for Parts and Models tagged `WaterInteractable`; untagged geometry is untouched and Models require a `PrimaryPart`.

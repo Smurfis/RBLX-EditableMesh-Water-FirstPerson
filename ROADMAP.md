@@ -9,6 +9,7 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] SmallProp / MediumProp / Boat / LargeShip profiles, 1/3/6/8 sample points, distance culling and update throttling (`29008d9`).
 - [x] Profile aliases make `medprop` resolve to the original MediumProp behavior.
 - [x] Initial water exit ledge hang/climb prototype using separate wall/top raycasts and supplied animations.
+- [x] Water exit climb diagnostics report each Space/raycast decision in Studio Output.
 - [x] Optional horizontal buoyancy drift (`7d2901a`).
 - [x] Separate opt-in `WaterDeformable` EditableMesh experiment (`12269f9`).
 - [x] Gentle player surface bobbing/tilt integrated with swimming (`00b5d6d`).
