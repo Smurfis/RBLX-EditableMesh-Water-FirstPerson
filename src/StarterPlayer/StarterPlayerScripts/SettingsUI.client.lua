@@ -194,6 +194,10 @@ createToggle("RemoveCoastlineEffectToggle", "Remove CoastLine Effect", false, fu
 	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "Enabled", not removed)
 end)
 
+createToggle("DisableFancyOceanToggle", "Disable Fancy Ocean", false, function(disabled)
+	setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "FancyOceanDisabled", disabled)
+end)
+
 local transparentWaterSliders: { Frame } = {}
 local transparentWaterEnabled = false
 local transparentWaterToggle: Checkbox.Checkbox?

@@ -221,6 +221,8 @@ The underlying ocean color layers remain coupled to the foam appearance; `Transp
 
 Transparent Water is now an explicit toggle. While enabled it exposes individual sliders for `WaveFoamVFX`, `WaterSurface`, `WaterMiddle`, and `WaterBase`, starts at 0.3 / 0.6 / 0.8 / 0.95 transparency, and detaches the Coastline effect. Disabling it restores the normal authored layers.
 
+Added a reversible `Disable Fancy Ocean` toggle. It detaches the generated ocean layers for a lightweight view while leaving `__ClientCoastlineEffect` intact; switching it back restores the same instances.
+
 The Coastline visibility control is inverted for clarity: slider value `1` keeps the effect at its minimum 45% transparency, and the effect can only become more transparent from there. `CALM OCEAN` is stored as the calm preset within the `WIND WAKER` visual family.
 
 The developer water-tuning panel introduced in `4e6f7c3` was reverted in `6e0ef29` at the user's request. Only removal of the Player Reflections option was retained; developer sliders and their renderer changes are not part of the final state.

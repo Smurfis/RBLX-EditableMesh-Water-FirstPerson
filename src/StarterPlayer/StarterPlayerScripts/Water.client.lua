@@ -355,6 +355,21 @@ waterFolder.Name =
 waterFolder.Parent =
 	Workspace
 
+local fancyOceanChildren: { Instance } = {}
+
+local function updateFancyOceanEnabled()
+	local disabled = waterFolder:GetAttribute("FancyOceanDisabled") == true
+	for _, child in fancyOceanChildren do
+		if disabled then
+			child.Parent = nil
+		else
+			child.Parent = waterFolder
+		end
+	end
+end
+
+waterFolder:GetAttributeChangedSignal("FancyOceanDisabled"):Connect(updateFancyOceanEnabled)
+
 waterFolder:SetAttribute(
 	"WaterVersion",
 	"V4 Single EditableMesh"
@@ -865,7 +880,8 @@ local function createWaterLayer(
 		transparency
 
 	layer.Parent =
-		waterFolder
+	if waterFolder:GetAttribute("FancyOceanDisabled") == true then nil else waterFolder
+	table.insert(fancyOceanChildren, layer)
 
 	return layer
 end
@@ -1048,7 +1064,8 @@ local function createFarTile(
 		FAR_WATER_TRANSPARENCY
 
 	tile.Parent =
-		waterFolder
+		if waterFolder:GetAttribute("FancyOceanDisabled") == true then nil else waterFolder
+	table.insert(fancyOceanChildren, tile)
 
 	table.insert(
 		farTiles,
