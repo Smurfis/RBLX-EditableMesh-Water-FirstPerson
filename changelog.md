@@ -217,6 +217,8 @@ The developer water-tuning panel introduced in `4e6f7c3` was reverted in `6e0ef2
 
 This is replicated visual feedback at the configured base surface. It does not establish server authority for the separate buoyancy prototype.
 
+The follow-up paddle pass separates airborne entry from surface contact. An entry ring is armed only after the player has clearly left the water, so holding Space or small surface bobbing cannot repeatedly fire the entry effect. While `SurfaceHold` is active, hand movement near the waterline emits a restrained ring at most once every 0.85 seconds, creating the requested paddling response around the player's hands.
+
 ### Source Assets
 
 - Moved the unchanged wave-line texture to `Imgs/AlphaMaskOverlay/WindWaker_WaveLines_01.png`.
