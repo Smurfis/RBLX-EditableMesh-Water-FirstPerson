@@ -46,6 +46,21 @@ does not implement carrying passengers standing on moving test Parts. Body tilt
 supports the existing R6/R15 Motor6D root joint; rigs without that joint still
 receive the swimming offset. The controller adds no camera roll or root rotation.
 
+## Riding a floating Part or boat
+
+`WaterPlatformRiderController.client.lua` handles the separate case where the
+player is physically standing on a tagged floating Part or Model. It reads the
+Humanoid's actual `FloorPart`, finds its `WaterInteractable` tag, and applies the
+platform's frame-to-frame CFrame delta to the local HumanoidRootPart. This makes
+the feet, body, and camera inherit vertical bobbing plus platform pitch, roll,
+and yaw. The player does not need another tag or attribute.
+
+For a Part, set `Anchored = true`, add the `WaterInteractable` tag, and use the
+existing buoyancy attributes. For a Model, set `PrimaryPart` before adding the
+tag. Stand on the moving object during Play; stepping off immediately clears the
+carry state. This is local visual riding and does not make server-authoritative
+gameplay agree with the client platform pose.
+
 ## Automated checks
 
 With the official Luau CLI available:
