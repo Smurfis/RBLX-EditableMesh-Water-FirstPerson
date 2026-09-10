@@ -1878,22 +1878,9 @@ local function calculateRegion(
 				octaves
 			)
 
-		local verticalWaveStrength = waterFolder:GetAttribute(
-			"DeveloperVerticalWaveStrength"
-		)
-		if typeof(verticalWaveStrength) ~= "number" then
-			verticalWaveStrength = 1
-		end
-		local horizontalWaveStrength = waterFolder:GetAttribute(
-			"DeveloperHorizontalWaveStrength"
-		)
-		if typeof(horizontalWaveStrength) ~= "number" then
-			horizontalWaveStrength = 1
-		end
-
-		local waveY = sample.Height * verticalWaveStrength
-		local displacementX = sample.Displacement.X * horizontalWaveStrength
-		local displacementZ = sample.Displacement.Z * horizontalWaveStrength
+		local waveY = sample.Height
+		local displacementX = sample.Displacement.X
+		local displacementZ = sample.Displacement.Z
 
 		positionValues[localIndex] =
 			Vector3.new(
