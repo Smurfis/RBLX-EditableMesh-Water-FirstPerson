@@ -210,7 +210,7 @@ createSlider("CoastlineTransparencySlider", "Coastline visibility", 1, function(
 end)
 
 local OCEAN_MODES = {
-	["CALM OCEAN"] = {
+	["WIND WAKER: CALM OCEAN"] = {
 		FoamTransparency = 0.63,
 		CoastlineTransparency = 0.29,
 		WaterOpacity = 0.75,
@@ -233,16 +233,16 @@ local function selectOceanMode(modeName: string)
 	container:SetAttribute("WaterOpacity", mode.WaterOpacity)
 	setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "WaveFoamTransparencyOverride", mode.FoamTransparency)
 	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "TransparencyOverride", mode.CoastlineTransparency)
-	if modeName == "CALM OCEAN" and windWakerToggle and windWakerToggle.Value then
+	if modeName == "WIND WAKER: CALM OCEAN" and windWakerToggle and windWakerToggle.Value then
 		windWakerToggle:Set(false)
 	elseif modeName == "WIND WAKER" and calmOceanToggle and calmOceanToggle.Value then
 		calmOceanToggle:Set(false)
 	end
 end
 
-calmOceanToggle = Checkbox.new(scroll, "CALM OCEAN", false, function(enabled)
+calmOceanToggle = Checkbox.new(scroll, "WIND WAKER: CALM OCEAN", false, function(enabled)
 	if enabled then
-		selectOceanMode("CALM OCEAN")
+		selectOceanMode("WIND WAKER: CALM OCEAN")
 	end
 end)
 calmOceanToggle.Frame.Name = "CalmOceanModeToggle"
