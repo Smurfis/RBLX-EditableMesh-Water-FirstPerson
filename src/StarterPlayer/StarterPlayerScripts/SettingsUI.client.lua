@@ -238,7 +238,7 @@ end
 local settingsRow = createKeybindRow(
 	"SettingsKeybind",
 	"rbxassetid://97812683336887",
-	"SETTINGS: [`]",
+	"SETTINGS: [=]",
 	-42
 )
 
@@ -346,7 +346,7 @@ statusLabel.TextYAlignment = Enum.TextYAlignment.Center
 statusLabel.RichText = false
 statusLabel.Parent = statusGui
 
-local SETTINGS_TOGGLE_KEY = Enum.KeyCode.K
+local SETTINGS_TOGGLE_KEY = Enum.KeyCode.Equals
 local mouseReleased = false
 local settingsOpen = false
 player:SetAttribute("SettingsOpen", false)
