@@ -18,12 +18,27 @@ end
 
 
 WaterConfig.Swimming = {
-	EnterOffset = 1.5,
-	ExitOffset = 2.0,
+	EnterOffset = 1.161,
+	ExitOffset = 1.161,
 
 	Speed = 16,
 	VerticalSpeed = 13,
 	Acceleration = 8,
+
+	-- Experimental HumanoidRootPart world-space surface boundaries.
+	-- These are deliberately grouped here so the test can be tuned or
+	-- removed without changing the swimming implementation again.
+	SurfaceTest = {
+		AssistStartY = 5.691,
+		FloatMinY = 6.825,
+		FloatTargetY = 6.9,
+		FloatMaxY = 6.975,
+		ExitY = 7.161,
+
+		RestoreResponse = 6,
+		MaxRestoreSpeed = 4,
+		DescendInputThreshold = -0.1,
+	},
 }
 
 

@@ -31,20 +31,15 @@
 --     separately using Speed and VerticalSpeed.
 --
 -- GRADUATED EXIT (added):
---   * Water entry is unchanged (SwimSettings.EnterOffset + surfaceY).
+--   * Water entry uses SwimSettings.EnterOffset + surfaceY.
 --   * Exiting is no longer a single boolean threshold. Root-part Y is
 --     compared against two absolute-height bands, the same banded-tween
 --     approach used on the coastline visual effect:
 --
---       8.5 -> 9.0  : swimming itself (forced swim velocity + the
---                     Space/Ctrl controls) fades out and fully stops.
---       8.5 -> 10.0 : buoyancy fades out over a WIDER band than
---                     swimming does, so gravity doesn't snap on the
---                     instant swimming stops - it eases the character
---                     the rest of the way out until 10.0, where
---                     movement is fully back to vanilla Roblox control.
+--       6.975 -> 7.161 : swimming and buoyancy fade out after an
+--                        intentional jump through the surface.
 --
---     Both ramps start at the same point (8.5) so there's no seam/pop
+--     Both ramps start at the foam band's upper edge so there's no seam/pop
 --     where one hands off to the other.
 
 
@@ -95,6 +90,9 @@ local player =
 local SwimSettings =
 	WaterConfig.Swimming
 
+local SurfaceTest =
+	SwimSettings.SurfaceTest
+
 
 ----------------------------------------------------------------
 -- SETTINGS
@@ -129,16 +127,40 @@ local ENTRY_SPLASH_REARM_HEIGHT = 4
 -- Absolute world-space ROOT PART Y thresholds (same pattern as the
 -- coastline effect's camera-Y fade), tuned from testing.
 
--- Below this, full swim control (forced velocity + Space/Ctrl) applies.
-local SWIM_STOP_START_Y = 8.5
+-- The surface assist starts before the visual clipping seen around this
+-- height and gently returns an idle/rising swimmer to the foam band.
+local SURFACE_ASSIST_START_Y =
+	SurfaceTest.AssistStartY
+
+local SURFACE_FLOAT_MIN_Y =
+	SurfaceTest.FloatMinY
+
+local SURFACE_FLOAT_TARGET_Y =
+	SurfaceTest.FloatTargetY
+
+local SURFACE_FLOAT_MAX_Y =
+	SurfaceTest.FloatMaxY
+
+local SURFACE_RESTORE_RESPONSE =
+	SurfaceTest.RestoreResponse
+
+local SURFACE_MAX_RESTORE_SPEED =
+	SurfaceTest.MaxRestoreSpeed
+
+local SURFACE_DESCEND_INPUT_THRESHOLD =
+	SurfaceTest.DescendInputThreshold
+
+-- Below the foam band's upper edge, full swim control applies.
+local SWIM_STOP_START_Y =
+	SURFACE_FLOAT_MAX_Y
 
 -- Swimming itself is fully stopped by this height.
-local SWIM_STOP_END_Y = 9.0
+local SWIM_STOP_END_Y =
+	SurfaceTest.ExitY
 
--- Buoyancy keeps gently fading a bit further than swimming does, so
--- the handoff to normal gravity/movement feels eased rather than
--- instant. Fully vanilla by this height.
-local BUOYANCY_RELEASE_END_Y = 10.0
+-- This test uses the same clear out-of-water boundary for buoyancy.
+local BUOYANCY_RELEASE_END_Y =
+	SWIM_STOP_END_Y
 
 
 ----------------------------------------------------------------
@@ -358,9 +380,8 @@ end
 
 
 -- 1 = full buoyancy, 0 = fully released to normal gravity.
--- Ramps out over the WIDER band SWIM_STOP_START_Y -> BUOYANCY_RELEASE_END_Y
--- so it stays continuous with getSwimAlpha() at the low end and simply
--- keeps fading a little longer at the top end.
+-- This test fades buoyancy across the same narrow surface-exit band as
+-- swim control so Y=7.161 is a clear handoff to normal physics.
 local function getBuoyancyAlpha(
 	rootY: number
 ): number
@@ -690,9 +711,8 @@ local function exitSwimming()
 	bodyInWater =
 		false
 
-	-- Swimming has stopped, but buoyancy keeps gently fading a bit
-	-- further (see BUOYANCY_RELEASE_END_Y) - this flag is what lets
-	-- the main loop know that fade is still legitimately in progress.
+	-- Preserve the exit handoff until buoyancy has reached zero. Keeping
+	-- this state separate prevents buoyancy from affecting a new fall.
 	recentlyExitedWater =
 		true
 
@@ -1265,6 +1285,52 @@ local function updateSwimming(
 
 
 	----------------------------------------------------------------
+	-- EXPERIMENTAL SURFACE HOLD
+	----------------------------------------------------------------
+
+	-- Space deliberately releases this hold so the character can jump
+	-- through the foam. Ctrl or a clear downward camera-relative input
+	-- still permits diving below the surface-assist region.
+	local descendingFromSurface =
+		swimDownHeld
+		or swimDirection.Y
+		< SURFACE_DESCEND_INPUT_THRESHOLD
+
+	local surfaceHoldActive =
+		rootY >= SURFACE_ASSIST_START_Y
+		and not swimUpHeld
+		and not descendingFromSurface
+
+	if surfaceHoldActive then
+		local verticalError = 0
+
+		if
+			rootY < SURFACE_FLOAT_MIN_Y
+			or rootY > SURFACE_FLOAT_MAX_Y
+		then
+			verticalError =
+				SURFACE_FLOAT_TARGET_Y
+				- rootY
+		end
+
+		targetVelocity =
+			Vector3.new(
+				targetVelocity.X,
+
+				math.clamp(
+					verticalError
+					* SURFACE_RESTORE_RESPONSE,
+
+					-SURFACE_MAX_RESTORE_SPEED,
+					SURFACE_MAX_RESTORE_SPEED
+				),
+
+				targetVelocity.Z
+			)
+	end
+
+
+	----------------------------------------------------------------
 	-- WATER DRAG / ACCELERATION
 	----------------------------------------------------------------
 
@@ -1290,6 +1356,54 @@ local function updateSwimming(
 		* swimAlpha
 
 
+	local nextVerticalVelocity =
+		lerpNumber(
+			currentVelocity.Y,
+			targetVelocity.Y,
+			alpha
+		)
+
+	if surfaceHoldActive then
+		-- Prevent the controller's own velocity from carrying the root
+		-- through either edge of the foam band. This also absorbs entry
+		-- momentum before the character reaches the bad visual layer.
+		local frameTime =
+			math.max(
+				dt,
+				1 / 240
+			)
+
+		local downwardVelocityFloor =
+			math.min(
+				0,
+
+				(
+					SURFACE_FLOAT_MIN_Y
+					- rootY
+				)
+				/ frameTime
+			)
+
+		local upwardVelocityCeiling =
+			math.max(
+				0,
+
+				(
+					SURFACE_FLOAT_MAX_Y
+					- rootY
+				)
+				/ frameTime
+			)
+
+		nextVerticalVelocity =
+			math.clamp(
+				nextVerticalVelocity,
+				downwardVelocityFloor,
+				upwardVelocityCeiling
+			)
+	end
+
+
 	currentRoot.AssemblyLinearVelocity =
 		Vector3.new(
 
@@ -1299,11 +1413,7 @@ local function updateSwimming(
 				alpha
 			),
 
-			lerpNumber(
-				currentVelocity.Y,
-				targetVelocity.Y,
-				alpha
-			),
+			nextVerticalVelocity,
 
 			lerpNumber(
 				currentVelocity.Z,

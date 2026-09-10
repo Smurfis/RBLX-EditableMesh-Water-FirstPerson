@@ -24,7 +24,8 @@
 -- from underneath (camera underwater looking up) the two coincident
 -- layers sort/refract in ways they were never authored for. Rather
 -- than trying to fix that view, we fade the pair out as the camera
--- submerges and fade it back in as it resurfaces.
+-- submerges and fade it back in as it resurfaces. The fade follows the
+-- root-part height so camera rotation cannot change it.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -42,6 +43,9 @@ local WaterConfig =
 		:WaitForChild("WaterConfig")
 	)
 
+local SurfaceTest =
+	WaterConfig.Swimming.SurfaceTest
+
 --==============================================================
 -- ASSETS
 --==============================================================
@@ -51,6 +55,12 @@ local assets =
 	:WaitForChild("Shared")
 	:WaitForChild("Assets")
 
+local waterSounds =
+	ReplicatedStorage
+	:WaitForChild("Shared")
+	:WaitForChild("Sounds")
+	:WaitForChild("Water")
+
 local coastlineTemplate =
 	assets
 	:WaitForChild("CoastLine")
@@ -58,6 +68,10 @@ local coastlineTemplate =
 local waterPartTemplate =
 	assets
 	:WaitForChild("WaterPart")
+
+local surfaceIdleTemplate =
+	waterSounds
+	:WaitForChild("WaterSurfaceIdle")
 
 assert(
 	coastlineTemplate:IsA("BasePart"),
@@ -67,6 +81,11 @@ assert(
 assert(
 	waterPartTemplate:IsA("BasePart"),
 	"ReplicatedStorage.Shared.Assets.WaterPart must be a BasePart/MeshPart"
+)
+
+assert(
+	surfaceIdleTemplate:IsA("Sound"),
+	"ReplicatedStorage.Shared.Sounds.Water.WaterSurfaceIdle must be a Sound"
 )
 
 --==============================================================
@@ -83,17 +102,44 @@ local COASTLINE_Y_OFFSET = 0.4
 
 local FOLLOW_SNAP = 32
 
+-- The query remains a little tolerant of thin visual geometry and animated
+-- hands, then uses timing hysteresis to avoid rapidly restarting the loop.
+local HAND_CONTACT_VERTICAL_PADDING = 0.15
+local HAND_CONTACT_START_DELAY = 0.12
+local HAND_CONTACT_RELEASE_DELAY = 0.25
+
+-- Preserve the authored pitch at rest and accelerate the loop as surface
+-- swimming approaches the configured maximum speed.
+local SURFACE_SOUND_SWIM_SPEED_MULTIPLIER = 1.65
+local SURFACE_SOUND_SPEED_FOLLOW_RATE = 8
+
+-- Muffle from the listener's camera position so dipping only the head below
+-- the surface sounds submerged even while a hand still touches the foam.
+local SURFACE_SOUND_MUFFLE_FULL_DEPTH = 2
+local SURFACE_SOUND_MUFFLED_LOW_GAIN = -2
+local SURFACE_SOUND_MUFFLED_MID_GAIN = -9
+local SURFACE_SOUND_MUFFLED_HIGH_GAIN = -22
+
+local HAND_PART_NAMES: { [string]: boolean } = {
+	LeftHand = true,
+	RightHand = true,
+	["Left Arm"] = true,
+	["Right Arm"] = true,
+}
+
 --==============================================================
 -- SUBMERSION FADE SETTINGS
 --==============================================================
 
--- Absolute world-space CAMERA Y thresholds, tuned from testing.
+-- Absolute world-space ROOT PART Y thresholds, tuned from testing.
 --
 -- At or above this height, the effect is fully visible.
-local CAMERA_VISIBLE_Y = 8.5
+local SURFACE_EFFECT_VISIBLE_Y =
+	SurfaceTest.FloatMinY
 
 -- At or below this height, the effect is fully invisible.
-local CAMERA_HIDDEN_Y = 8.0
+local SURFACE_EFFECT_HIDDEN_Y =
+	SurfaceTest.AssistStartY
 
 -- Optional extra time-based smoothing layered on top of the
 -- position-based ramp above, so fast camera movement through the
@@ -149,6 +195,10 @@ waterPart.CanQuery =
 waterPart.CastShadow =
 	false
 
+if waterPart:IsA("MeshPart") then
+	waterPart.DoubleSided = true
+end
+
 waterPart.Parent =
 	effectFolder
 
@@ -173,6 +223,10 @@ coastline.CanQuery =
 coastline.CastShadow =
 	false
 
+if coastline:IsA("MeshPart") then
+	coastline.DoubleSided = true
+end
+
 coastline.Parent =
 	effectFolder
 
@@ -182,6 +236,253 @@ coastline.Parent =
 
 local player =
 	Players.LocalPlayer
+
+local handOverlapParams =
+	OverlapParams.new()
+
+handOverlapParams.FilterType =
+	Enum.RaycastFilterType.Include
+
+handOverlapParams.MaxParts =
+	16
+
+local surfaceIdleSound: Sound? =
+	nil
+
+local surfaceIdleMuffle: EqualizerSoundEffect? =
+	nil
+
+local surfaceIdleCharacter: Model? =
+	nil
+
+local surfaceIdleBasePlaybackSpeed = 1
+local surfaceIdlePlaybackMultiplier = 1
+local handContactTime = 0
+local handReleaseTime = 0
+
+local function destroySurfaceIdleSound()
+	if surfaceIdleSound then
+		surfaceIdleSound:Destroy()
+		surfaceIdleSound = nil
+	end
+
+	surfaceIdleMuffle = nil
+	surfaceIdleCharacter = nil
+	surfaceIdleBasePlaybackSpeed = 1
+	surfaceIdlePlaybackMultiplier = 1
+	handContactTime = 0
+	handReleaseTime = 0
+end
+
+local function ensureSurfaceIdleSound(
+	character: Model,
+	root: BasePart
+): Sound
+	if
+		surfaceIdleSound
+		and surfaceIdleSound.Parent
+		and surfaceIdleCharacter == character
+	then
+		return surfaceIdleSound
+	end
+
+	destroySurfaceIdleSound()
+
+	local sound =
+		surfaceIdleTemplate:Clone()
+
+	sound.Name =
+		"WaterSurfaceIdle_Local"
+
+	sound.Looped =
+		true
+
+	surfaceIdleBasePlaybackSpeed =
+		sound.PlaybackSpeed
+
+	local muffle =
+		Instance.new(
+			"EqualizerSoundEffect"
+		)
+
+	muffle.Name =
+		"WaterSurfaceMuffle"
+
+	muffle.LowGain = 0
+	muffle.MidGain = 0
+	muffle.HighGain = 0
+	muffle.Parent = sound
+
+	sound.Parent =
+		root
+
+	surfaceIdleSound = sound
+	surfaceIdleMuffle = muffle
+	surfaceIdleCharacter = character
+	handOverlapParams.FilterDescendantsInstances = {
+		character,
+	}
+
+	return sound
+end
+
+local function isHandTouchingCoastline(): boolean
+	local querySize =
+		coastline.Size
+		+ Vector3.new(
+			0,
+			HAND_CONTACT_VERTICAL_PADDING * 2,
+			0
+		)
+
+	local overlappingParts =
+		Workspace:GetPartBoundsInBox(
+			coastline.CFrame,
+			querySize,
+			handOverlapParams
+		)
+
+	for _, part in overlappingParts do
+		if HAND_PART_NAMES[part.Name] then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function updateSurfaceIdleSound(
+	dt: number,
+	character: Model,
+	humanoid: Humanoid,
+	root: BasePart
+)
+	local sound =
+		ensureSurfaceIdleSound(
+			character,
+			root
+		)
+
+	local velocity =
+		root.AssemblyLinearVelocity
+
+	local horizontalSpeed =
+		Vector3.new(
+			velocity.X,
+			0,
+			velocity.Z
+		).Magnitude
+
+	local speedAlpha =
+		math.clamp(
+			math.max(
+				horizontalSpeed
+				/ WaterConfig.Swimming.Speed,
+
+				humanoid.MoveDirection.Magnitude
+				* 0.25
+			),
+			0,
+			1
+		)
+
+	local targetPlaybackMultiplier =
+		1
+		+ (
+			SURFACE_SOUND_SWIM_SPEED_MULTIPLIER
+			- 1
+		)
+		* speedAlpha
+
+	local speedFollowAlpha =
+		1
+		- math.exp(
+			-SURFACE_SOUND_SPEED_FOLLOW_RATE
+			* dt
+		)
+
+	surfaceIdlePlaybackMultiplier +=
+		(
+			targetPlaybackMultiplier
+			- surfaceIdlePlaybackMultiplier
+		)
+		* speedFollowAlpha
+
+	sound.PlaybackSpeed =
+		surfaceIdleBasePlaybackSpeed
+		* surfaceIdlePlaybackMultiplier
+
+	local camera =
+		Workspace.CurrentCamera
+
+	local listenerY =
+		camera
+		and camera.CFrame.Position.Y
+		or root.Position.Y
+
+	local muffleDepth =
+		math.max(
+			0,
+
+			WaterConfig.GetSurfaceY()
+			- listenerY
+			- WaterConfig.Underwater.CameraEnterDepth
+		)
+
+	local muffleAlpha =
+		math.clamp(
+			muffleDepth
+			/ SURFACE_SOUND_MUFFLE_FULL_DEPTH,
+			0,
+			1
+		)
+
+	local muffle =
+		surfaceIdleMuffle
+
+	if muffle then
+		muffle.LowGain =
+			SURFACE_SOUND_MUFFLED_LOW_GAIN
+			* muffleAlpha
+
+		muffle.MidGain =
+			SURFACE_SOUND_MUFFLED_MID_GAIN
+			* muffleAlpha
+
+		muffle.HighGain =
+			SURFACE_SOUND_MUFFLED_HIGH_GAIN
+			* muffleAlpha
+	end
+
+	local touching =
+		isHandTouchingCoastline()
+
+	if touching then
+		handContactTime += dt
+		handReleaseTime = 0
+
+		if
+			handContactTime
+			>= HAND_CONTACT_START_DELAY
+			and not sound.IsPlaying
+		then
+			sound:Play()
+		end
+
+		return
+	end
+
+	handContactTime = 0
+	handReleaseTime += dt
+
+	if
+		handReleaseTime
+		>= HAND_CONTACT_RELEASE_DELAY
+		and sound.IsPlaying
+	then
+		sound:Stop()
+	end
+end
 
 --==============================================================
 -- POSITIONING
@@ -286,39 +587,39 @@ local function lerpNumber(
 		* alpha
 end
 
--- Linear ramp purely as a function of camera height.
+-- Linear ramp purely as a function of root-part height.
 --
--- >= CAMERA_VISIBLE_Y : 0 (fully visible)
--- <= CAMERA_HIDDEN_Y  : 1 (fully invisible)
+-- >= SURFACE_EFFECT_VISIBLE_Y : 0 (fully visible)
+-- <= SURFACE_EFFECT_HIDDEN_Y  : 1 (fully invisible)
 -- in between          : smooth 0 -> 1
 local function getTargetFadeAlpha(
-	cameraY: number
+	rootY: number
 ): number
 
-	if cameraY >= CAMERA_VISIBLE_Y then
+	if rootY >= SURFACE_EFFECT_VISIBLE_Y then
 		return 0
 	end
 
-	if cameraY <= CAMERA_HIDDEN_Y then
+	if rootY <= SURFACE_EFFECT_HIDDEN_Y then
 		return 1
 	end
 
 	return
-		(CAMERA_VISIBLE_Y - cameraY)
+		(SURFACE_EFFECT_VISIBLE_Y - rootY)
 		/ (
-			CAMERA_VISIBLE_Y
-			- CAMERA_HIDDEN_Y
+			SURFACE_EFFECT_VISIBLE_Y
+			- SURFACE_EFFECT_HIDDEN_Y
 		)
 end
 
 local function updateSubmersionFade(
 	dt: number,
-	cameraY: number
+	rootY: number
 )
 
 	local target =
 		getTargetFadeAlpha(
-			cameraY
+			rootY
 		)
 
 	local alpha =
@@ -363,8 +664,14 @@ RunService:BindToRenderStep(
 			player.Character
 
 		if not character then
+			destroySurfaceIdleSound()
 			return
 		end
+
+		local humanoid =
+			character:FindFirstChildOfClass(
+				"Humanoid"
+			)
 
 		local root =
 			character:FindFirstChild(
@@ -374,7 +681,9 @@ RunService:BindToRenderStep(
 		if
 			not root
 			or not root:IsA("BasePart")
+			or not humanoid
 		then
+			destroySurfaceIdleSound()
 			return
 		end
 
@@ -382,17 +691,16 @@ RunService:BindToRenderStep(
 			root.Position
 		)
 
-		local camera =
-			Workspace.CurrentCamera
-
-		local cameraY =
-			camera
-			and camera.CFrame.Position.Y
-			or root.Position.Y
-
 		updateSubmersionFade(
 			dt,
-			cameraY
+			root.Position.Y
+		)
+
+		updateSurfaceIdleSound(
+			dt,
+			character,
+			humanoid,
+			root
 		)
 	end
 )
