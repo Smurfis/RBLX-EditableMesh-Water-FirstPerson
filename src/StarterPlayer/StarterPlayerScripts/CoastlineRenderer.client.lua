@@ -102,6 +102,10 @@ local COASTLINE_Y_OFFSET = 0.4
 
 local FOLLOW_SNAP = 32
 
+-- Keep the authored coastline effect present while reducing how strongly it
+-- competes with the generated ocean layers. Set to 1 to restore full opacity.
+local EFFECT_OPACITY_MULTIPLIER = 0.55
+
 -- The query remains a little tolerant of thin visual geometry and animated
 -- hands, then uses timing hysteresis to avoid rapidly restarting the loop.
 local HAND_CONTACT_VERTICAL_PADDING = 0.15
@@ -574,6 +578,16 @@ local waterPartBaseTransparency =
 local coastlineBaseTransparency =
 	coastline.Transparency
 
+local waterPartVisibleTransparency =
+	waterPartBaseTransparency
+	+ (1 - waterPartBaseTransparency)
+	* (1 - EFFECT_OPACITY_MULTIPLIER)
+
+local coastlineVisibleTransparency =
+	coastlineBaseTransparency
+	+ (1 - coastlineBaseTransparency)
+	* (1 - EFFECT_OPACITY_MULTIPLIER)
+
 local fadeAlpha = 0 -- 0 = fully visible, 1 = fully hidden
 
 local function lerpNumber(
@@ -637,14 +651,14 @@ local function updateSubmersionFade(
 
 	waterPart.Transparency =
 		lerpNumber(
-			waterPartBaseTransparency,
+			waterPartVisibleTransparency,
 			1,
 			fadeAlpha
 		)
 
 	coastline.Transparency =
 		lerpNumber(
-			coastlineBaseTransparency,
+			coastlineVisibleTransparency,
 			1,
 			fadeAlpha
 		)
