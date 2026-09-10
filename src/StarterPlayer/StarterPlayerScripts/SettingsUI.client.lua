@@ -178,6 +178,53 @@ local function setWorkspaceTransparencyAttribute(folderName: string, attributeNa
 	end
 end
 
+local function createToggle(
+	name: string,
+	labelText: string,
+	defaultValue: boolean,
+	callback: (boolean) -> ()
+): Frame
+	local frame = Instance.new("Frame")
+	frame.Name = name
+	frame.Size = UDim2.new(1, -8, 0, 40)
+	frame.BackgroundTransparency = 1
+	frame.LayoutOrder = 2
+	frame.Parent = scroll
+
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(1, 0, 1, 0)
+	button.BackgroundColor3 = Color3.fromRGB(48, 60, 74)
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.Font = Enum.Font.Gotham
+	button.TextSize = 14
+	button.AutoButtonColor = true
+	button.Parent = frame
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+
+	local enabled = defaultValue
+	local function setValue(value: boolean)
+		enabled = value
+		button.Text = string.format("%s: %s", labelText, if enabled then "On" else "Off")
+		button.BackgroundColor3 = if enabled
+			then Color3.fromRGB(55, 105, 90)
+			else Color3.fromRGB(48, 60, 74)
+		callback(enabled)
+	end
+	button.Activated:Connect(function()
+		setValue(not enabled)
+	end)
+	setValue(defaultValue)
+	return frame
+end
+
+createToggle("RemoveCoastlineEffectToggle", "Remove CoastLine Effect", false, function(removed)
+	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "Enabled", not removed)
+end)
+
+createToggle("TransparentOceanToggle", "Transparent Ocean", false, function(enabled)
+	setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "TransparentOcean", enabled)
+end)
+
 createSlider("WaveFoamTransparencySlider", "Wave foam transparency", 0, function(value)
 	setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "WaveFoamTransparencyOverride", value)
 end)

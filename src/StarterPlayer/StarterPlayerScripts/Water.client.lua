@@ -908,7 +908,7 @@ if HIDE_GENERATED_WAVELINES then
 end
 
 local function updateWaveFoamTransparency()
-	if HIDE_GENERATED_WAVELINES then
+	if HIDE_GENERATED_WAVELINES or waterFolder:GetAttribute("TransparentOcean") == true then
 		waveLinesMesh.Transparency = 1
 		return
 	end
@@ -918,7 +918,17 @@ local function updateWaveFoamTransparency()
 		else WATER_COASTLINE_TRANSPARENCY
 end
 waterFolder:GetAttributeChangedSignal("WaveFoamTransparencyOverride"):Connect(updateWaveFoamTransparency)
+
+local function updateTransparentOcean()
+	local transparent = waterFolder:GetAttribute("TransparentOcean") == true
+	waterBaseMesh.Transparency = if transparent then 1 else WATER_BASE_TRANSPARENCY
+	waterMiddleMesh.Transparency = if transparent then 1 else WATER_MIDDLE_TRANSPARENCY
+	waterMesh.Transparency = if transparent then 1 else WATER_SURFACE_TRANSPARENCY
+	updateWaveFoamTransparency()
+end
+waterFolder:GetAttributeChangedSignal("TransparentOcean"):Connect(updateTransparentOcean)
 updateWaveFoamTransparency()
+updateTransparentOcean()
 
 -- Clone the preconfigured SurfaceAppearance ONLY onto the white upper
 -- layer. We intentionally do NOT assign ColorMap from this LocalScript

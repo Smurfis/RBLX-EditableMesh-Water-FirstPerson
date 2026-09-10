@@ -18,6 +18,7 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Animated settings panel, slider controls, compact/tappable keybind HUD, mouse-lock reticle and responsive server/title/version/FPS display (`97bbb9f` through `3f2fdca`). Settings uses `=`; free mouse uses `M`.
 - [x] Compact keybind mode retains `[=]`/`[M]` symbols and reveals icons when toggled.
 - [x] Settings includes independent wave-foam and Coastline transparency controls.
+- [x] Settings includes CoastLine removal and Transparent Ocean toggles.
 - [x] Remove Player Reflections; revert experimental developer tools (`6e0ef29`).
 - [x] Replicated water-entry splash rings using the Studio `SplashRing` template (`0ca845a`).
 - [x] Separate one-shot entry rings from throttled hand-proximity paddle rings while surface holding.

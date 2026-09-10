@@ -590,6 +590,23 @@ local coastlineVisibleTransparency =
 
 local fadeAlpha = 0 -- 0 = fully visible, 1 = fully hidden
 
+local function setEffectEnabled(enabled: boolean)
+	if enabled then
+		waterPart.Parent = effectFolder
+		coastline.Parent = effectFolder
+	else
+		-- Removing the two render parts from the data model gives the toggle a
+		-- real performance benefit while retaining them for instant re-enable.
+		waterPart.Parent = nil
+		coastline.Parent = nil
+	end
+end
+
+effectFolder:GetAttributeChangedSignal("Enabled"):Connect(function()
+	setEffectEnabled(effectFolder:GetAttribute("Enabled") ~= false)
+end)
+setEffectEnabled(effectFolder:GetAttribute("Enabled") ~= false)
+
 local function lerpNumber(
 	a: number,
 	b: number,
@@ -630,6 +647,9 @@ local function updateSubmersionFade(
 	dt: number,
 	rootY: number
 )
+	if effectFolder:GetAttribute("Enabled") == false then
+		return
+	end
 
 	local target =
 		getTargetFadeAlpha(
