@@ -3,7 +3,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -231,9 +230,9 @@ local function createKeybindRow(
 	label.Text = text
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
 	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.TextStrokeTransparency = 0.35
-	label.Font = Enum.Font.Gotham
-	label.TextSize = 14
+	label.TextStrokeTransparency = 0.2
+	label.Font = Enum.Font.Cartoon
+	label.TextSize = 18
 	label.TextXAlignment = Enum.TextXAlignment.Right
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.Parent = row
@@ -244,14 +243,14 @@ end
 createKeybindRow(
 	"SettingsKeybind",
 	"rbxassetid://97812683336887",
-	"[SETTINGS: KEYBIND]",
+	"SETTINGS: KEYBIND",
 	-70
 )
 
 local freeMouseRow = createKeybindRow(
 	"MouseLockKeybind",
 	"rbxassetid://77904780414059",
-	"[Free Mouse: M]",
+	"Free Mouse: M",
 	-42
 )
 
@@ -277,7 +276,8 @@ reticleStroke.Parent = reticle
 
 local serverLabel = Instance.new("TextLabel")
 serverLabel.Name = "ServerStatus"
-serverLabel.Position = UDim2.fromOffset(18, 18)
+serverLabel.AnchorPoint = Vector2.new(0.5, 0)
+serverLabel.Position = UDim2.new(0.5, 0, 0, 18)
 serverLabel.Size = UDim2.fromOffset(620, 24)
 serverLabel.BackgroundTransparency = 1
 serverLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -285,15 +285,30 @@ serverLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 serverLabel.TextStrokeTransparency = 0.35
 serverLabel.Font = Enum.Font.Gotham
 serverLabel.TextSize = 14
-serverLabel.TextXAlignment = Enum.TextXAlignment.Left
+serverLabel.TextXAlignment = Enum.TextXAlignment.Center
 serverLabel.TextYAlignment = Enum.TextYAlignment.Center
 serverLabel.Parent = statusGui
 
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Name = "FPSStatus"
+fpsLabel.AnchorPoint = Vector2.new(0.5, 0)
+fpsLabel.Position = UDim2.new(0.5, 0, 0, 42)
+fpsLabel.Size = UDim2.fromOffset(220, 22)
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+fpsLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+fpsLabel.TextStrokeTransparency = 0.35
+fpsLabel.Font = Enum.Font.Gotham
+fpsLabel.TextSize = 14
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Center
+fpsLabel.TextYAlignment = Enum.TextYAlignment.Center
+fpsLabel.Parent = statusGui
+
 local versionLabel = Instance.new("TextLabel")
 versionLabel.Name = "WaterVersionStatus"
-versionLabel.AnchorPoint = Vector2.new(0, 1)
-versionLabel.Position = UDim2.new(0, 18, 1, -18)
-versionLabel.Size = UDim2.fromOffset(620, 24)
+versionLabel.AnchorPoint = Vector2.new(1, 0)
+versionLabel.Position = UDim2.new(1, -18, 0, 18)
+versionLabel.Size = UDim2.fromOffset(72, 24)
 versionLabel.BackgroundTransparency = 1
 versionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 versionLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
@@ -306,9 +321,9 @@ versionLabel.Parent = statusGui
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "ProjectStatus"
-statusLabel.AnchorPoint = Vector2.new(1, 1)
-statusLabel.Position = UDim2.new(1, -18, 1, -18)
-statusLabel.Size = UDim2.fromOffset(620, 44)
+statusLabel.AnchorPoint = Vector2.new(1, 0)
+statusLabel.Position = UDim2.new(1, -102, 0, 18)
+statusLabel.Size = UDim2.fromOffset(420, 24)
 statusLabel.BackgroundTransparency = 1
 statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 statusLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
@@ -316,7 +331,7 @@ statusLabel.TextStrokeTransparency = 0.35
 statusLabel.Font = Enum.Font.Gotham
 statusLabel.TextSize = 14
 statusLabel.TextXAlignment = Enum.TextXAlignment.Right
-statusLabel.TextYAlignment = Enum.TextYAlignment.Bottom
+statusLabel.TextYAlignment = Enum.TextYAlignment.Center
 statusLabel.RichText = false
 statusLabel.Parent = statusGui
 
@@ -400,19 +415,8 @@ RunService.RenderStepped:Connect(function(deltaTime)
 		fps += (instantFps - fps) * math.clamp(deltaTime * 5, 0, 1)
 	end
 
-	local waterFolder = Workspace:FindFirstChild("__ClientRealisticWaterV4")
-	local waterVersion = "V4"
-	if waterFolder then
-		local configuredVersion = waterFolder:GetAttribute("WaterVersion")
-		if typeof(configuredVersion) == "string" and configuredVersion ~= "" then
-			waterVersion = configuredVersion
-		end
-	end
-
-	statusLabel.Text = string.format(
-		"RBLX EditableMesh Water First Person\n[fps: %d]",
-		math.floor(fps + 0.5)
-	)
+	statusLabel.Text = "RBLX EditableMesh Water First Person"
 	serverLabel.Text = string.format("[server: %s]", serverId)
-	versionLabel.Text = string.format("[waterVersion: %s]", waterVersion)
+	versionLabel.Text = "v4.x.x"
+	fpsLabel.Text = string.format("[fps: %d]", math.floor(fps + 0.5))
 end)
