@@ -12,13 +12,14 @@ local WaterConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChi
 local player = Players.LocalPlayer
 local HANG_ID = "rbxassetid://14252434075"
 local CLIMB_ID = "rbxassetid://14240367012"
-local WALL_DISTANCE = 3.5
+local WALL_DISTANCE = 5
 local MAX_CLIMB_HEIGHT = 4.5
 local MAX_LEDGE_DROP = 4.5
 local STANDOFF = 1.35
 local HANG_DROP = 1.15
 local CLIMB_TIME = 0.42
 local DEBOUNCE = 0.35
+local NEAR_SURFACE_HEIGHT = 8
 local DEBUG = true
 
 local humanoid: Humanoid? = nil
@@ -59,14 +60,19 @@ end
 local function nearWater(): boolean
 	if not humanoid or not root then return false end
 	return humanoid:GetState() == Enum.HumanoidStateType.Swimming
-		or root.Position.Y <= WaterConfig.GetSurfaceY() + 2.5
+		or root.Position.Y <= WaterConfig.GetSurfaceY() + NEAR_SURFACE_HEIGHT
 end
 
 local function findLedge(): (CFrame?, CFrame?)
 	local currentRoot, rayParams = root, params
 	if not currentRoot or not rayParams then return nil, nil end
-	local wall = workspace:Raycast(currentRoot.Position + Vector3.new(0, 1.35, 0), currentRoot.CFrame.LookVector * WALL_DISTANCE, rayParams)
+	local wall = nil
+	for _, height in ipairs({ 0.5, 1.35, 2.1 }) do
+		wall = workspace:Raycast(currentRoot.Position + Vector3.new(0, height, 0), currentRoot.CFrame.LookVector * WALL_DISTANCE, rayParams)
+		if wall then break end
+	end
 	if not wall or not wall.Instance:IsA("BasePart") or not wall.Instance.CanCollide then debugLog("Wall ray missed"); return nil, nil end
+	debugLog("Wall hit: " .. wall.Instance:GetFullName())
 	local normal = Vector3.new(wall.Normal.X, 0, wall.Normal.Z)
 	if normal.Magnitude < 0.5 then debugLog("Wall hit was not vertical"); return nil, nil end
 	normal = normal.Unit

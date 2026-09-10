@@ -185,6 +185,8 @@ Added `WaterExitClimbController` as an initial local ledge-climb prototype using
 
 Added temporary Studio diagnostics under the `[WaterExitClimb]` prefix for Space input, water eligibility, wall hits, top-ray misses, height rejection, hang entry and climb start.
 
+Expanded climb detection to a five-stud wall range, three vertical wall probes, and an eight-stud near-surface allowance. This lets the controller detect low pool ledges and medium-prop edges even when the player's head is already above the water.
+
 The ledge height range now accepts tops up to 4.5 studs below the character root, allowing swimmers to grab lower pool edges while retaining the 4.5-stud upward climb limit.
 
 ### Opt-In Buoyancy and Deformation
