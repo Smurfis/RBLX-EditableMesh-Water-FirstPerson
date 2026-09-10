@@ -46,6 +46,23 @@ local alignOri: AlignOrientation? = nil
 local itemAttachment: Attachment? = nil
 local holdAttachment: Attachment? = nil
 local deathConnection: RBXScriptConnection? = nil
+local collisionStates: { [BasePart]: boolean } = {}
+local shoulderTransforms: { [Motor6D]: CFrame } = {}
+
+local function setHeldPose(character: Model, held: boolean)
+	for _, descendant in character:GetDescendants() do
+		if descendant:IsA("Motor6D") and (descendant.Name == "LeftShoulder" or descendant.Name == "RightShoulder") then
+			if held then
+				shoulderTransforms[descendant] = descendant.Transform
+				local side = if descendant.Name == "LeftShoulder" then -1 else 1
+				descendant.Transform = CFrame.new(side * 0.35, 0, -0.15) * CFrame.Angles(math.rad(-12), math.rad(side * 18), math.rad(side * 8))
+			else
+				descendant.Transform = shoulderTransforms[descendant] or CFrame.identity
+				shoulderTransforms[descendant] = nil
+			end
+		end
+	end
+end
 
 local function dropItem()
 	if alignPos then alignPos:Destroy(); alignPos = nil end
@@ -53,6 +70,11 @@ local function dropItem()
 	if holdAttachment then holdAttachment:Destroy(); holdAttachment = nil end
 	if deathConnection then deathConnection:Disconnect(); deathConnection = nil end
 	if itemAttachment then itemAttachment:Destroy(); itemAttachment = nil end
+	for part, canCollide in collisionStates do
+		if part.Parent then part.CanCollide = canCollide end
+		collisionStates[part] = nil
+	end
+	if holder and holder.Character then setHeldPose(holder.Character, false) end
 	if root and root:IsA("BasePart") then
 		root:SetNetworkOwner(nil)
 	end
@@ -60,15 +82,37 @@ local function dropItem()
 	prompt.Enabled = true
 end
 
+local function throwItem(player: Player)
+	local character = player.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	local direction = if hrp and hrp:IsA("BasePart") then hrp.CFrame.LookVector else Vector3.new(0, 0, -1)
+	if character then
+		setHeldPose(character, false)
+	end
+	dropItem()
+	root.AssemblyLinearVelocity = direction * 28 + Vector3.new(0, 8, 0)
+	root:ApplyImpulse(direction * root.AssemblyMass * 18 + Vector3.new(0, root.AssemblyMass * 6, 0))
+end
+
 prompt.Triggered:Connect(function(player)
-	if holder then return end
+	if holder then
+		if holder == player then throwItem(player) end
+		return
+	end
 	local character = player.Character
 	local hrp = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not hrp or not humanoid or not hrp:IsA("BasePart") then return end
 
 	holder = player
-	prompt.Enabled = false
+	prompt.Enabled = true
+	setHeldPose(character, true)
+	for _, descendant in item:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			collisionStates[descendant] = descendant.CanCollide
+			descendant.CanCollide = false
+		end
+	end
 	root:SetNetworkOwner(player)
 	itemAttachment = Instance.new("Attachment")
 	itemAttachment.Name = "PickupAttachment"

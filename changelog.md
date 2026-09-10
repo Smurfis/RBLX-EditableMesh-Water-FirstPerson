@@ -223,6 +223,8 @@ Added an isolated `Workspace.Slime` pickup test object setup. Slime is tagged as
 
 Slime now supports Model setups using its `HumanoidRootPart` as PrimaryPart and produces a local ring plus splash-particle burst when it falls through the water surface.
 
+While held, Slime no longer collides with the player, the arms pose outward, and pressing `E` again throws it forward with an upward impulse instead of doing nothing.
+
 Transparent Water is now an explicit toggle. While enabled it exposes individual sliders for `WaveFoamVFX`, `WaterSurface`, `WaterMiddle`, and `WaterBase`, starts at 0.3 / 0.6 / 0.8 / 0.95 transparency, and detaches the Coastline effect. Disabling it restores the normal authored layers.
 
 Added a reversible `Disable Fancy Ocean` toggle. It detaches the generated ocean layers while leaving `__ClientCoastlineEffect` visible as the remaining ocean VFX; switching it back restores the same generated instances.
