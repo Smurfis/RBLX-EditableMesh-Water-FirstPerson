@@ -219,6 +219,8 @@ Settings also includes `Remove CoastLine Effect` and `Transparent Ocean` toggles
 
 The underlying ocean color layers remain coupled to the foam appearance; `Transparent Ocean` therefore only detaches the Coastline VFX folder and does not hide individual water passes.
 
+Added an isolated `Workspace.Slime` pickup test object setup. Slime is tagged as a `SmallProp` water interactable, can be picked up with its ProximityPrompt, and dropped with `G` for buoyancy testing.
+
 Transparent Water is now an explicit toggle. While enabled it exposes individual sliders for `WaveFoamVFX`, `WaterSurface`, `WaterMiddle`, and `WaterBase`, starts at 0.3 / 0.6 / 0.8 / 0.95 transparency, and detaches the Coastline effect. Disabling it restores the normal authored layers.
 
 Added a reversible `Disable Fancy Ocean` toggle. It detaches the generated ocean layers while leaving `__ClientCoastlineEffect` visible as the remaining ocean VFX; switching it back restores the same generated instances.
