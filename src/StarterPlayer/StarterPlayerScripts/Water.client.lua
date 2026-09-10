@@ -230,12 +230,12 @@ local WATER_SURFACE_COLOR = Color3.fromRGB(106,141,148)
 local WATER_SURFACE_TRANSPARENCY = 0.30
 
 local WATER_COASTLINE_COLOR = Color3.fromRGB(236, 235, 226)
-local WATER_COASTLINE_TRANSPARENCY = 0.15
+local WATER_COASTLINE_TRANSPARENCY = 0
 
 -- Temporary isolation switch while diagnosing the camera-angle visual bug.
 -- Keep the generated CoastLine instance in the folder so this test can be
 -- reversed without rebuilding the renderer's layer structure.
-local HIDE_GENERATED_COASTLINE = true
+local HIDE_GENERATED_COASTLINE = false
 
 local deepColor =
 	Color3.fromRGB(
