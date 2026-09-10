@@ -42,6 +42,19 @@ WaterConfig.Swimming = {
 }
 
 
+-- Gentle player-only response. This deliberately filters small wave chop.
+WaterConfig.PlayerWaveMotion = {
+	Enabled = true,
+	Octaves = 6,
+	SampleHz = 30,
+	HeightStrength = 0.3,
+	MaxHeight = 0.35,
+	MaxOffsetSpeed = 0.75,
+	Response = 5,
+	TiltStrength = 0.35,
+	MaxTiltDegrees = 6,
+}
+
 WaterConfig.Underwater = {
 	CameraEnterDepth = 0.15,
 	CameraExitHeight = 0.30,

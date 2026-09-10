@@ -66,6 +66,10 @@ local WaterConfig =
 		:WaitForChild("WaterConfig")
 	)
 
+local PlayerWaveMotionState = require(
+	ReplicatedStorage:WaitForChild("Modules"):WaitForChild("PlayerWaveMotionState")
+)
+
 local WaterSounds =
 	ReplicatedStorage
 	:WaitForChild("Shared")
@@ -1123,6 +1127,8 @@ end
 local function updateSwimming(
 	dt: number
 )
+	PlayerWaveMotionState.SurfaceHold = false
+	PlayerWaveMotionState.Root = rootPart
 
 	local currentHumanoid =
 		humanoid
@@ -1153,6 +1159,7 @@ local function updateSwimming(
 
 	local rootY =
 		currentRoot.Position.Y
+		- PlayerWaveMotionState.Offset
 
 	if
 		not bodyInWater
@@ -1301,6 +1308,13 @@ local function updateSwimming(
 		and not swimUpHeld
 		and not descendingFromSurface
 
+	-- Wave motion only runs during this controller's surface hold, never
+	-- while walking on solid ground, jumping, seated, or deliberately diving.
+	PlayerWaveMotionState.SurfaceHold = surfaceHoldActive
+		and currentHumanoid.FloorMaterial == Enum.Material.Air
+		and not currentHumanoid.Sit
+		and not currentHumanoid.PlatformStand
+
 	if surfaceHoldActive then
 		local verticalError = 0
 
@@ -1442,6 +1456,9 @@ player.CharacterAdded:Connect(
 
 
 player.CharacterRemoving:Connect(function()
+	PlayerWaveMotionState.Root = nil
+	PlayerWaveMotionState.SurfaceHold = false
+	PlayerWaveMotionState.Offset = 0
 	disconnectDefaultSplashSuppression()
 	entrySplashSound = nil
 	entrySplashArmed = false
