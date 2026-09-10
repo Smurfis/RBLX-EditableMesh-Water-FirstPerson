@@ -54,10 +54,14 @@ local m_acos = math.acos
 local WaterConfig =
 	require(
 		ReplicatedStorage
-		:WaitForChild("Shared")
-		:WaitForChild("Water")
+		:WaitForChild("Modules")
 		:WaitForChild("WaterConfig")
 	)
+
+local WaterAssets =
+	ReplicatedStorage
+	:WaitForChild("Shared")
+	:WaitForChild("Assets")
 
 local function getSurfaceY(): number
 	return WaterConfig.GetSurfaceY()
@@ -201,7 +205,6 @@ local LOD_FAR_END_SQ = LOD_FAR_END * LOD_FAR_END
 -- These are rendering layers only. Wave geometry is still calculated once.
 
 local WATER_OVERLAY_TEMPLATE_NAME = "WaterOverlaySurfaceAppearance"
-local WATER_OVERLAY_TEXTURE_ID = "rbxassetid://521579191"
 
 -- The source water this look came from was roughly 248 studs across, so
 -- use that as the world-space repeat size. UVs are re-anchored whenever
@@ -221,13 +224,13 @@ local WATER_COASTLINE_Y_OFFSET = 0.055
 local WATER_BASE_COLOR = Color3.fromRGB(15, 75, 120)
 local WATER_BASE_TRANSPARENCY = 0.58
 
-local WATER_MIDDLE_COLOR = Color3.fromRGB(120, 195, 225)
+local WATER_MIDDLE_COLOR = Color3.fromRGB(104, 143, 187)
 local WATER_MIDDLE_TRANSPARENCY = 0.46
 
-local WATER_SURFACE_COLOR = Color3.fromRGB(235, 245, 248)
+local WATER_SURFACE_COLOR = Color3.fromRGB(106,141,148)
 local WATER_SURFACE_TRANSPARENCY = 0.30
 
-local WATER_COASTLINE_COLOR = Color3.fromRGB(248, 248, 248)
+local WATER_COASTLINE_COLOR = Color3.fromRGB(236, 235, 226)
 local WATER_COASTLINE_TRANSPARENCY = 0.15
 
 local deepColor =
@@ -1064,66 +1067,29 @@ local coastLineMesh =
 		WATER_COASTLINE_TRANSPARENCY
 	)
 
--- Build the SurfaceAppearance at runtime for the white upper layer.
---
--- SurfaceAppearance texture-map properties themselves cannot be assigned
--- directly by a normal runtime LocalScript. AssetService's dynamic-content
--- path lets us create an EditableImage from the asset and then construct a
--- SurfaceAppearance with those maps already attached.
-local overlayImage: EditableImage? = nil
+-- Clone the preconfigured SurfaceAppearance ONLY onto the white upper
+-- layer. We intentionally do NOT assign ColorMap from this LocalScript
+-- because Roblox restricts that property at runtime.
+local overlayTemplate =
+	WaterAssets:FindFirstChild(
+		WATER_OVERLAY_TEMPLATE_NAME
+	)
 
-local imageOk, imageResult =
-	pcall(function()
-		return AssetService:CreateEditableImageAsync(
-			Content.fromUri(
-				WATER_OVERLAY_TEXTURE_ID
-			)
-		)
-	end)
+if overlayTemplate and overlayTemplate:IsA("SurfaceAppearance") then
+	local overlay =
+		overlayTemplate:Clone()
 
-if imageOk and imageResult then
-	overlayImage =
-		imageResult
+	overlay.Name =
+		"SurfaceAppearance"
+
+	overlay.Parent =
+		coastLineMesh
 else
 	warn(
-		"[Water V4] Failed to create EditableImage for "
-			.. WATER_OVERLAY_TEXTURE_ID
+		"[Water V4] Missing SurfaceAppearance '"
+			.. WATER_OVERLAY_TEMPLATE_NAME
+			.. "' in ReplicatedStorage.Shared.Assets. Set ColorMap to rbxassetid://521579191 and AlphaMode to Overlay."
 	)
-end
-
-if overlayImage then
-	local mapContent =
-		Content.fromObject(
-			overlayImage
-		)
-
-	local appearanceOk, appearanceResult =
-		pcall(function()
-			return AssetService:CreateSurfaceAppearanceAsync({
-				ColorMap = mapContent,
-				MetalnessMap = mapContent,
-				NormalMap = mapContent,
-				RoughnessMap = mapContent,
-			})
-		end)
-
-	if appearanceOk and appearanceResult then
-		local overlay =
-			appearanceResult
-
-		overlay.Name =
-			WATER_OVERLAY_TEMPLATE_NAME
-
-		overlay.AlphaMode =
-			Enum.AlphaMode.Overlay
-
-		overlay.Parent =
-			coastLineMesh
-	else
-		warn(
-			"[Water V4] Failed to create runtime SurfaceAppearance."
-		)
-	end
 end
 
 waterFolder:SetAttribute(
@@ -2097,11 +2063,11 @@ local function calculateRegion(
 
 		local cameraDX =
 			worldX
-			- cameraPosition.X
+		- cameraPosition.X
 
 		local cameraDZ =
 			worldZ
-			- cameraPosition.Z
+		- cameraPosition.Z
 
 		local distanceSquared =
 			cameraDX * cameraDX
@@ -2347,7 +2313,7 @@ RunService:BindToRenderStep(
 
 		local t =
 			os.clock()
-			- startTime
+		- startTime
 
 		for i = 1, activeOctaves do
 

@@ -36,17 +36,33 @@ Create Parts tagged `WaterExclusion` to cut dry areas out of a water body.
 ```text
 src/
 ├── ReplicatedStorage/
-│   └── FirstPersonWater/
-│       ├── WaterConfig.lua
-│       ├── WaterBody.lua
-│       ├── WaterRegistry.lua
-│       ├── WaveMath.lua
-│       └── ChunkScheduler.lua
+│   └── Modules/
+│       └── WaterConfig.lua
 └── StarterPlayer/
+    ├── StarterCharacterScripts/
     └── StarterPlayerScripts/
-        └── FirstPersonWater/
-            └── WaterClient.client.lua
 ```
+
+`WaterConfig` is available in Roblox at `ReplicatedStorage.Modules.WaterConfig`.
+
+The Rojo project sets `$ignoreUnknownInstances` on the data model, every mapped container, and each mapped script. Existing Studio instances outside this source tree are therefore preserved when the project is connected.
+
+## Studio-managed dependencies
+
+Keep these instances in Studio; Rojo deliberately does not manage them:
+
+```text
+ReplicatedStorage/
+└── Shared/
+    ├── Assets/
+    │   └── WaterOverlaySurfaceAppearance
+    └── Sounds/
+        └── Water/
+            ├── WorldAmbience
+            └── UnderwaterAmbience
+```
+
+`WaterOverlaySurfaceAppearance` must be a `SurfaceAppearance`. The renderer reads it from `Shared/Assets`, then creates its `WaterPart`, `WaterPart2`, `WaterPart3`, and `CoastLine` mesh parts at runtime. Existing `WaterPart` and `CoastLine` assets are preserved but are not read by the renderer.
 
 ## Roadmap
 

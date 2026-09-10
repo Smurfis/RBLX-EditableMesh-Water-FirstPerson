@@ -217,8 +217,7 @@ end
 local WaterConfig =
 	require(
 		ReplicatedStorage
-		:WaitForChild("Shared")
-		:WaitForChild("Water")
+		:WaitForChild("Modules")
 		:WaitForChild("WaterConfig")
 	)
 

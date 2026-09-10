@@ -1,33 +1,17 @@
 {
-  "name": "RBLX-FirstPerson-Water",
+  "name": "RBLX-EditableMesh-Water-FirstPerson",
+
   "tree": {
     "$className": "DataModel",
+    "$ignoreUnknownInstances": true,
 
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "$ignoreUnknownInstances": true,
 
-      "Shared": {
+      "Modules": {
         "$className": "Folder",
-        "$ignoreUnknownInstances": true,
-
-        "Water": {
-          "$className": "Folder",
-          "$ignoreUnknownInstances": true,
-
-          "WaterConfig": {
-            "$path": "src/ReplicatedStorage/Shared/Water/WaterConfig.lua"
-          },
-
-          "Assets": {
-            "$className": "Folder",
-            "$ignoreUnknownInstances": true
-          }
-        }
-      },
-
-      "FirstPersonWater": {
-        "$path": "src/ReplicatedStorage/FirstPersonWater",
+        "$path": "src/ReplicatedStorage/Modules",
         "$ignoreUnknownInstances": true
       }
     },

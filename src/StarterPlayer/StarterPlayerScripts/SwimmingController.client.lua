@@ -29,6 +29,23 @@
 --
 --   * Horizontal and vertical maximum speeds can still be configured
 --     separately using Speed and VerticalSpeed.
+--
+-- GRADUATED EXIT (added):
+--   * Water entry is unchanged (SwimSettings.EnterOffset + surfaceY).
+--   * Exiting is no longer a single boolean threshold. Root-part Y is
+--     compared against two absolute-height bands, the same banded-tween
+--     approach used on the coastline visual effect:
+--
+--       8.5 -> 9.0  : swimming itself (forced swim velocity + the
+--                     Space/Ctrl controls) fades out and fully stops.
+--       8.5 -> 10.0 : buoyancy fades out over a WIDER band than
+--                     swimming does, so gravity doesn't snap on the
+--                     instant swimming stops - it eases the character
+--                     the rest of the way out until 10.0, where
+--                     movement is fully back to vanilla Roblox control.
+--
+--     Both ramps start at the same point (8.5) so there's no seam/pop
+--     where one hands off to the other.
 
 
 local Players =
@@ -50,8 +67,7 @@ local Workspace =
 local WaterConfig =
 	require(
 		ReplicatedStorage
-		:WaitForChild("Shared")
-		:WaitForChild("Water")
+		:WaitForChild("Modules")
 		:WaitForChild("WaterConfig")
 	)
 
@@ -83,6 +99,25 @@ local ACTION_PRIORITY =
 
 
 ----------------------------------------------------------------
+-- GRADUATED EXIT SETTINGS
+----------------------------------------------------------------
+
+-- Absolute world-space ROOT PART Y thresholds (same pattern as the
+-- coastline effect's camera-Y fade), tuned from testing.
+
+-- Below this, full swim control (forced velocity + Space/Ctrl) applies.
+local SWIM_STOP_START_Y = 8.5
+
+-- Swimming itself is fully stopped by this height.
+local SWIM_STOP_END_Y = 9.0
+
+-- Buoyancy keeps gently fading a bit further than swimming does, so
+-- the handoff to normal gravity/movement feels eased rather than
+-- instant. Fully vanilla by this height.
+local BUOYANCY_RELEASE_END_Y = 10.0
+
+
+----------------------------------------------------------------
 -- CHARACTER STATE
 ----------------------------------------------------------------
 
@@ -101,6 +136,14 @@ local buoyancyForce: VectorForce? =
 
 
 local bodyInWater =
+	false
+
+
+-- True for the short window after swimming has stopped but before
+-- buoyancy has fully released (i.e. we're coasting out of the water,
+-- not falling toward it). Prevents buoyancy from applying while simply
+-- descending from height above the water before ever having entered it.
+local recentlyExitedWater =
 	false
 
 
@@ -135,12 +178,67 @@ local function getSurfaceY(): number
 end
 
 
+-- 1 = full swim control, 0 = swimming has fully stopped.
+-- Ramps out linearly between SWIM_STOP_START_Y and SWIM_STOP_END_Y.
+local function getSwimAlpha(
+	rootY: number
+): number
+
+	if rootY <= SWIM_STOP_START_Y then
+		return 1
+	end
+
+	if rootY >= SWIM_STOP_END_Y then
+		return 0
+	end
+
+	return
+		1
+	- (
+		rootY - SWIM_STOP_START_Y
+	)
+		/ (
+			SWIM_STOP_END_Y
+			- SWIM_STOP_START_Y
+		)
+end
+
+
+-- 1 = full buoyancy, 0 = fully released to normal gravity.
+-- Ramps out over the WIDER band SWIM_STOP_START_Y -> BUOYANCY_RELEASE_END_Y
+-- so it stays continuous with getSwimAlpha() at the low end and simply
+-- keeps fading a little longer at the top end.
+local function getBuoyancyAlpha(
+	rootY: number
+): number
+
+	if rootY <= SWIM_STOP_START_Y then
+		return 1
+	end
+
+	if rootY >= BUOYANCY_RELEASE_END_Y then
+		return 0
+	end
+
+	return
+		1
+	- (
+		rootY - SWIM_STOP_START_Y
+	)
+		/ (
+			BUOYANCY_RELEASE_END_Y
+			- SWIM_STOP_START_Y
+		)
+end
+
+
 ----------------------------------------------------------------
 -- BUOYANCY
 ----------------------------------------------------------------
 
 local function setBuoyancyEnabled(
-	enabled: boolean
+	enabled: boolean,
+	scale: number?
 )
 
 	local currentRoot =
@@ -172,12 +270,18 @@ local function setBuoyancyEnabled(
 	-- mass * gravity
 	--
 	-- Applying the opposite upward force gives approximately
-	-- neutral buoyancy.
+	-- neutral buoyancy. `scale` lets callers taper this down smoothly
+	-- instead of only ever being fully on or fully off.
+
+	local appliedScale =
+		scale
+		or 1
 
 	local requiredForce =
 		currentRoot.AssemblyMass
 		* Workspace.Gravity
 		* BUOYANCY_SCALE
+		* appliedScale
 
 
 	force.Force =
@@ -379,11 +483,17 @@ local function enterSwimming()
 	bodyInWater =
 		true
 
+	-- Fresh cycle - any leftover post-exit coast-out is no longer
+	-- relevant once we're actively swimming again.
+	recentlyExitedWater =
+		false
+
 
 	bindSwimControls()
 
 	setBuoyancyEnabled(
-		true
+		true,
+		1
 	)
 
 
@@ -414,12 +524,14 @@ local function exitSwimming()
 	bodyInWater =
 		false
 
+	-- Swimming has stopped, but buoyancy keeps gently fading a bit
+	-- further (see BUOYANCY_RELEASE_END_Y) - this flag is what lets
+	-- the main loop know that fade is still legitimately in progress.
+	recentlyExitedWater =
+		true
+
 
 	unbindSwimControls()
-
-	setBuoyancyEnabled(
-		false
-	)
 
 
 	local currentRoot =
@@ -489,6 +601,9 @@ local function setupCharacter(
 
 
 	bodyInWater =
+		false
+
+	recentlyExitedWater =
 		false
 
 
@@ -829,60 +944,106 @@ local function updateSwimming(
 		or currentHumanoid.Health <= 0
 	then
 
+		-- Don't leave a stray upward force applied to a character
+		-- that no longer exists / is dead.
+		setBuoyancyEnabled(
+			false
+		)
+
 		return
 	end
 
 
-	----------------------------------------------------------------
-	-- WATER ENTRY / EXIT
-	----------------------------------------------------------------
-
 	local surfaceY =
 		getSurfaceY()
 
+	local rootY =
+		currentRoot.Position.Y
+
+
+	----------------------------------------------------------------
+	-- WATER ENTRY (unchanged - still relative to surfaceY)
+	----------------------------------------------------------------
 
 	if not bodyInWater then
 
 		if
-			currentRoot.Position.Y
+			rootY
 			< surfaceY
 			+ SwimSettings.EnterOffset
 		then
 
 			enterSwimming()
 		end
+	end
+
+
+	----------------------------------------------------------------
+	-- GRADUATED EXIT
+	----------------------------------------------------------------
+
+	-- 1 = full swim control, 0 = swimming has fully stopped.
+	local swimAlpha =
+		getSwimAlpha(
+			rootY
+		)
+
+	if
+		bodyInWater
+		and swimAlpha <= 0
+	then
+
+		exitSwimming()
+	end
+
+
+	----------------------------------------------------------------
+	-- BUOYANCY
+	----------------------------------------------------------------
+
+	-- Only relevant while actively swimming, or while coasting out
+	-- of the water right after swimming stopped. NOT while merely
+	-- falling toward the water from height before ever entering it.
+	local applyBuoyancy =
+		bodyInWater
+		or recentlyExitedWater
+
+	if applyBuoyancy then
+
+		local buoyancyAlpha =
+			getBuoyancyAlpha(
+				rootY
+			)
+
+		if buoyancyAlpha > 0 then
+
+			setBuoyancyEnabled(
+				true,
+				buoyancyAlpha
+			)
+
+		else
+
+			setBuoyancyEnabled(
+				false
+			)
+
+			-- Fully settled back to vanilla gravity/movement.
+			recentlyExitedWater =
+				false
+		end
 
 	else
 
-		if
-			currentRoot.Position.Y
-			> surfaceY
-			+ SwimSettings.ExitOffset
-		then
-
-			exitSwimming()
-
-			return
-		end
+		setBuoyancyEnabled(
+			false
+		)
 	end
 
 
 	if not bodyInWater then
 		return
 	end
-
-
-	----------------------------------------------------------------
-	-- KEEP BUOYANCY CURRENT
-	----------------------------------------------------------------
-
-	-- AssemblyMass can technically change if equipment/accessories
-	-- modify the assembly, so recalculating this is inexpensive and
-	-- keeps the buoyancy force correct.
-
-	setBuoyancyEnabled(
-		true
-	)
 
 
 	----------------------------------------------------------------
@@ -928,12 +1089,22 @@ local function updateSwimming(
 		currentRoot.AssemblyLinearVelocity
 
 
+	-- Scaling by swimAlpha here is what actually "gives movement
+	-- back to the player": as swimAlpha fades toward 0 near
+	-- SWIM_STOP_END_Y, our correction toward the forced swim
+	-- velocity gets weaker and weaker each frame, so normal
+	-- Roblox gravity/momentum increasingly takes over on its own
+	-- instead of our override letting go all at once.
+
 	local alpha =
-		1
-	- math.exp(
-		-SwimSettings.Acceleration
-			* dt
-	)
+		(
+			1
+			- math.exp(
+				-SwimSettings.Acceleration
+				* dt
+			)
+		)
+		* swimAlpha
 
 
 	currentRoot.AssemblyLinearVelocity =
@@ -996,6 +1167,9 @@ player.CharacterRemoving:Connect(function()
 
 
 	bodyInWater =
+		false
+
+	recentlyExitedWater =
 		false
 
 
