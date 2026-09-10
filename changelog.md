@@ -219,7 +219,9 @@ This is replicated visual feedback at the configured base surface. It does not e
 
 The follow-up paddle pass separates airborne entry from surface contact. An entry ring is armed only after the player has clearly left the water, so holding Space or small surface bobbing cannot repeatedly fire the entry effect. While `SurfaceHold` is active, hand movement near the waterline emits a restrained ring at most once every 0.85 seconds, creating the requested paddling response around the player's hands.
 
-The paddle trigger now follows horizontal swimming speed and alternates hands. It places each smaller ring 1.35 studs ahead of the active hand at the CoastLine/waterline, so forward swimming produces the pushing-water illusion even when the hand animation remains visually above the surface. Paddle rings use the same replicated surface effect and are scaled to 72% of the entry ring.
+The paddle trigger now follows horizontal swimming speed and alternates hands. It places each smaller ring 1.35 studs ahead of the active hand at the CoastLine/waterline, so forward and backstroke swimming produces the pushing-water illusion even when the hand animation remains visually above the surface. Paddle rings start 0.45 studs above CoastLine, tween down into it, remain throttled at 0.62 seconds, and are 5% larger than the previous paddle size.
+
+The entry ring now starts 10% wider and 50% thicker vertically, with a slightly longer fade, so the first jump into the water reads clearly before disappearing.
 
 ### Source Assets
 

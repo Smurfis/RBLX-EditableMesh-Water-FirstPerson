@@ -19,6 +19,7 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Replicated water-entry splash rings using the Studio `SplashRing` template (`0ca845a`).
 - [x] Separate one-shot entry rings from throttled hand-proximity paddle rings while surface holding.
 - [x] Forward surface swimming emits alternating smaller rings ahead of the hands at the CoastLine/waterline.
+- [x] Entry splash has a thicker, more visible initial impact than paddle rings.
 
 ## Acceptance and next checks
 

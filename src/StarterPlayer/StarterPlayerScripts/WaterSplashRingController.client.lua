@@ -17,8 +17,9 @@ local event = ReplicatedStorage:WaitForChild("WaterSplashRingEvent")
 
 local ENTRY_HEIGHT = WaterConfig.Swimming.EnterOffset
 local ENTRY_REARM_HEIGHT = 4
-local PADDLE_INTERVAL = 0.85
+local PADDLE_INTERVAL = 0.62
 local PADDLE_FORWARD_DISTANCE = 1.35
+local PADDLE_HEIGHT_OFFSET = 0.45
 local PADDLE_MIN_SPEED = 1.5
 
 local root: BasePart? = nil
@@ -40,7 +41,9 @@ end
 
 local function fireRing(position: Vector3, ringKind: string?)
 	event:FireServer(
-		Vector3.new(position.X, WaterConfig.GetSurfaceY(), position.Z),
+		if ringKind == "Paddle"
+			then Vector3.new(position.X, WaterConfig.GetSurfaceY() + PADDLE_HEIGHT_OFFSET, position.Z)
+			else Vector3.new(position.X, WaterConfig.GetSurfaceY(), position.Z),
 		ringKind
 	)
 end

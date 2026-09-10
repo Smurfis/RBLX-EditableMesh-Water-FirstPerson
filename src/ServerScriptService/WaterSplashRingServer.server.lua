@@ -75,20 +75,28 @@ event.OnServerEvent:Connect(function(player, requestedPosition, ringKind)
 
 	local initialSize = ring.Size
 	if ringKind == "Paddle" then
-		initialSize *= 0.72
+		initialSize *= 0.756
+		ring.Size = initialSize
+	else
+		-- Give the initial jump-in impact a thicker, more readable body.
+		initialSize = Vector3.new(initialSize.X * 1.1, initialSize.Y * 1.5, initialSize.Z * 1.1)
 		ring.Size = initialSize
 	end
 	ring.Transparency = template.Transparency
+	local tweenGoal = {
+		Size = initialSize * (if ringKind == "Paddle" then 1.35 else 2.5),
+		Transparency = 1,
+	}
+	if ringKind == "Paddle" then
+		tweenGoal.Position = Vector3.new(requestedPosition.X, surfaceY, requestedPosition.Z)
+	end
 	local tween = TweenService:Create(
 		ring,
-		TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{
-			Size = initialSize * 2.5,
-			Transparency = 1,
-		}
+		TweenInfo.new(if ringKind == "Paddle" then 0.85 else 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		tweenGoal
 	)
 	tween:Play()
-	Debris:AddItem(ring, 0.8)
+	Debris:AddItem(ring, if ringKind == "Paddle" then 1 else 1.0)
 end)
 
 game.Players.PlayerRemoving:Connect(function(player)
