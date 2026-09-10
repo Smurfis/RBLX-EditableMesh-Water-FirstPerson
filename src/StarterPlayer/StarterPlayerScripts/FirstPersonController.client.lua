@@ -60,7 +60,13 @@ end
 
 
 local function applyMouseState()
-	if mouseReleased then
+	local settingsOpen = player:GetAttribute("SettingsOpen") == true
+	local releasedOverride = player:GetAttribute("MouseReleased")
+	local shouldRelease = if typeof(releasedOverride) == "boolean"
+		then releasedOverride
+		else mouseReleased
+
+	if settingsOpen or shouldRelease then
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 		UserInputService.MouseIconEnabled = true
 	else
@@ -302,6 +308,7 @@ UserInputService.InputBegan:Connect(function(
 
 	if input.KeyCode == Enum.KeyCode.M then
 		mouseReleased = not mouseReleased
+		player:SetAttribute("MouseReleased", mouseReleased)
 		applyMouseState()
 	end
 end)

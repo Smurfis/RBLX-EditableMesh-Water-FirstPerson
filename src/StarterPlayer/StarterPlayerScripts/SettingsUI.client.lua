@@ -211,7 +211,8 @@ local function createKeybindRow(
 	local icon = Instance.new("ImageLabel")
 	icon.Name = "Icon"
 	icon.Size = UDim2.fromOffset(24, 24)
-	icon.Position = UDim2.fromOffset(0, 2)
+	icon.AnchorPoint = Vector2.new(1, 0)
+	icon.Position = UDim2.new(1, 0, 0, 2)
 	icon.BackgroundTransparency = 1
 	icon.Image = imageId
 	icon.ScaleType = Enum.ScaleType.Fit
@@ -219,7 +220,7 @@ local function createKeybindRow(
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
-	label.Position = UDim2.fromOffset(32, 0)
+	label.Position = UDim2.fromOffset(0, 0)
 	label.Size = UDim2.new(1, -32, 1, 0)
 	label.BackgroundTransparency = 1
 	label.Text = text
@@ -237,16 +238,40 @@ end
 local settingsRow = createKeybindRow(
 	"SettingsKeybind",
 	"rbxassetid://97812683336887",
-	"SETTINGS: KEYBIND",
+	"[SETTINGS: `]",
 	-42
 )
 
 local freeMouseRow = createKeybindRow(
 	"MouseLockKeybind",
 	"rbxassetid://77904780414059",
-	"Free Mouse: M",
+	"[Free Mouse: M]",
 	-70
 )
+
+local settingsLabel = settingsRow:FindFirstChild("Label")
+local mouseLabel = freeMouseRow:FindFirstChild("Label")
+
+local compactKeybinds = false
+local function applyCompactKeybinds()
+	if settingsLabel and settingsLabel:IsA("TextLabel") then
+		settingsLabel.Visible = not compactKeybinds
+	end
+	if mouseLabel and mouseLabel:IsA("TextLabel") then
+		mouseLabel.Visible = not compactKeybinds
+	end
+end
+
+local compactSetting = Checkbox.new(
+	scroll,
+	"Compact keybind HUD",
+	false,
+	function(enabled)
+		compactKeybinds = enabled
+		applyCompactKeybinds()
+	end
+)
+compactSetting.Frame.LayoutOrder = 4
 local settingsIcon = settingsRow:FindFirstChild("Icon")
 local mouseIcon = freeMouseRow:FindFirstChild("Icon")
 
@@ -326,6 +351,7 @@ local mouseReleased = false
 local settingsOpen = false
 
 local function updateMouseUi()
+	player:SetAttribute("MouseReleased", mouseReleased)
 	if settingsIcon and settingsIcon:IsA("ImageLabel") then
 		settingsIcon.Visible = not settingsOpen
 	end
@@ -345,6 +371,7 @@ local settingsTweenInfo = TweenInfo.new(
 
 local function setSettingsOpen(open: boolean)
 	settingsOpen = open
+	player:SetAttribute("SettingsOpen", open)
 
 	if open then
 		mouseReleased = true
@@ -373,6 +400,33 @@ local function setSettingsOpen(open: boolean)
 	end)
 	tween:Play()
 end
+
+local function addKeybindButton(row: Frame): TextButton
+	local button = Instance.new("TextButton")
+	button.Name = "TapTarget"
+	button.Size = UDim2.fromScale(1, 1)
+	button.BackgroundTransparency = 1
+	button.BorderSizePixel = 0
+	button.Text = ""
+	button.AutoButtonColor = false
+	button.ZIndex = 10
+	button.Parent = row
+	return button
+end
+
+local settingsButton = addKeybindButton(settingsRow)
+settingsButton.Activated:Connect(function()
+	setSettingsOpen(not settingsOpen)
+end)
+
+local mouseButton = addKeybindButton(freeMouseRow)
+mouseButton.Activated:Connect(function()
+	if settingsOpen then
+		return
+	end
+	mouseReleased = not mouseReleased
+	updateMouseUi()
+end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then
