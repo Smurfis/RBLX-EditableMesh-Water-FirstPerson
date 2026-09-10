@@ -181,6 +181,8 @@ The Gerstner experiment uses the ocean's existing stylized wave implementation; 
 
 Profile names are case-insensitive and `medprop` resolves to `MediumProp`. The temporary calmer response experiment was reverted after confirming the frantic behavior came from a large prop configured as `SmallProp`; the original MediumProp profile remains unchanged.
 
+Added `WaterExitClimbController` as an initial local ledge-climb prototype using the supplied hang animation `14252434075` and climb animation `14240367012`. It uses separate wall and top-surface raycasts to align the character before the climb tween.
+
 ### Opt-In Buoyancy and Deformation
 
 - `d4fed6a` added smooth height following for Parts and Models tagged `WaterInteractable`; untagged geometry is untouched and Models require a `PrimaryPart`.
