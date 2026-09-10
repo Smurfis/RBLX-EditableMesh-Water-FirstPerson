@@ -55,6 +55,8 @@ Keep these instances in Studio; Rojo deliberately does not manage them:
 ReplicatedStorage/
 └── Shared/
     ├── Assets/
+    │   ├── CoastLine
+    │   ├── WaterPart
     │   └── WaterOverlaySurfaceAppearance
     └── Sounds/
         └── Water/
@@ -62,7 +64,7 @@ ReplicatedStorage/
             └── UnderwaterAmbience
 ```
 
-`WaterOverlaySurfaceAppearance` must be a `SurfaceAppearance`. The renderer reads it from `Shared/Assets`, then creates its `WaterPart`, `WaterPart2`, `WaterPart3`, and `CoastLine` mesh parts at runtime. Existing `WaterPart` and `CoastLine` assets are preserved but are not read by the renderer.
+`WaterOverlaySurfaceAppearance` must be a `SurfaceAppearance`. The main water renderer reads it from `Shared/Assets` and creates its ocean mesh layers at runtime. The separate coastline renderer clones the authored `WaterPart` and `CoastLine` templates from `Shared/Assets`.
 
 ## Roadmap
 
