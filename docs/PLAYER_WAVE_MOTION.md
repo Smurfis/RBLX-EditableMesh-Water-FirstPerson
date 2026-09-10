@@ -41,8 +41,7 @@ sessions, set `WaterConfig.PlayerWaveMotion.Enabled = false` in source.
 5. Check the foam and underwater transitions while bobbing. Their existing
    world-height thresholds still apply; this is a conservative motion test.
 
-This is filtered player motion, not exact full-amplitude crest attachment. It
-does not implement carrying passengers standing on moving test Parts. Body tilt
+This is filtered player motion, not exact full-amplitude crest attachment. Body tilt
 supports the existing R6/R15 Motor6D root joint; rigs without that joint still
 receive the swimming offset. The controller adds no camera roll or root rotation.
 
