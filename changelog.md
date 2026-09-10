@@ -237,6 +237,8 @@ Shallow walking now uses the Studio-managed `ShallowFootsteps` sound. Its three-
 
 When movement stops, the sound now pauses immediately at its current position instead of continuing through the rest of the clip; it resumes and loops again when shallow movement resumes.
 
+The pause state is tracked locally because Roblox `Sound` has no `PlaybackState` property; this removes the runtime error reported by Studio.
+
 The shallow sound no longer restarts on every footstep tick, preventing rapid looping. A single delayed exit ring and particle burst is also emitted when the player leaves the pool, allowing a clean jump-out and re-entry effect without repeated triggers.
 
 While shallow water is active, captured Roblox `Running` sounds are now explicitly stopped as well as muted. This prevents the default footstep system from restarting or cutting across `ShallowFootsteps`; normal running sound volume is restored after leaving the water band.

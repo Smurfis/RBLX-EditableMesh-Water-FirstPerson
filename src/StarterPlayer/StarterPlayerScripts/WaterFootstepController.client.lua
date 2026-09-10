@@ -55,6 +55,7 @@ local waterFootstep: Sound? = nil
 local descendantConnection: RBXScriptConnection? = nil
 local savedRunningVolumes: { [Sound]: number } = {}
 local stepClock = 0
+local shallowPaused = false
 
 local function isRunningSound(instance: Instance): boolean
 	return instance:IsA("Sound") and instance.Name == "Running"
@@ -106,6 +107,7 @@ local function setupCharacter(newCharacter: Model)
 	shallowSound.Parent = rootPart
 	shallowSound:Stop()
 	waterFootstep = shallowSound
+	shallowPaused = false
 
 	for _, descendant in newCharacter:GetDescendants() do
 		muteRunningSound(descendant)
@@ -192,6 +194,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
 		if waterFootstep then
 			waterFootstep:Stop()
 		end
+		shallowPaused = false
 		return
 	end
 
@@ -223,13 +226,15 @@ RunService.Heartbeat:Connect(function(deltaTime)
 		if waterFootstep and waterFootstep.IsPlaying then
 			waterFootstep.Looped = false
 			waterFootstep:Pause()
+			shallowPaused = true
 		end
 		return
 	end
 	if waterFootstep then
 		waterFootstep.Looped = true
-		if waterFootstep.PlaybackState == Enum.PlaybackState.Paused then
+		if shallowPaused then
 			waterFootstep:Resume()
+			shallowPaused = false
 		end
 	end
 
