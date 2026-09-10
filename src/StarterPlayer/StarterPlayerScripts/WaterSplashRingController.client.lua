@@ -110,5 +110,4 @@ RunService.RenderStepped:Connect(function()
 				end
 			end
 		end
-	end
 end)
