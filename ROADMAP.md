@@ -20,6 +20,8 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Separate one-shot entry rings from throttled hand-proximity paddle rings while surface holding.
 - [x] Forward surface swimming emits alternating smaller rings ahead of the hands at the CoastLine/waterline.
 - [x] Entry splash has a thicker, more visible initial impact than paddle rings.
+- [x] Shallow-water footsteps follow the shared animated surface at each foot.
+- [x] Shoreline footsteps emit small replicated rings at the contacting foot.
 
 ## Acceptance and next checks
 

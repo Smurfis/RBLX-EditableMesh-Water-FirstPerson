@@ -36,7 +36,7 @@ event.OnServerEvent:Connect(function(player, requestedPosition, ringKind)
 	if typeof(requestedPosition) ~= "Vector3" then
 		return
 	end
-	if ringKind ~= nil and ringKind ~= "Paddle" then
+	if ringKind ~= nil and ringKind ~= "Paddle" and ringKind ~= "Footstep" then
 		return
 	end
 
@@ -65,7 +65,7 @@ event.OnServerEvent:Connect(function(player, requestedPosition, ringKind)
 
 	lastSplashAt[player] = now
 	local ring = template:Clone()
-	ring.Name = if ringKind == "Paddle" then "WaterPaddleRing" else "WaterSplashRing"
+	ring.Name = if ringKind == "Paddle" then "WaterPaddleRing" elseif ringKind == "Footstep" then "WaterFootstepRing" else "WaterSplashRing"
 	ring.Anchored = true
 	ring.CanCollide = false
 	ring.CanTouch = false
@@ -77,6 +77,9 @@ event.OnServerEvent:Connect(function(player, requestedPosition, ringKind)
 	if ringKind == "Paddle" then
 		initialSize *= 0.756
 		ring.Size = initialSize
+	elseif ringKind == "Footstep" then
+		initialSize *= 0.42
+		ring.Size = initialSize
 	else
 		-- Give the initial jump-in impact a thicker, more readable body.
 		initialSize = Vector3.new(initialSize.X * 1.1, initialSize.Y * 1.5, initialSize.Z * 1.1)
@@ -84,19 +87,19 @@ event.OnServerEvent:Connect(function(player, requestedPosition, ringKind)
 	end
 	ring.Transparency = template.Transparency
 	local tweenGoal = {
-		Size = initialSize * (if ringKind == "Paddle" then 1.35 else 2.5),
+		Size = initialSize * (if ringKind == "Paddle" then 1.35 elseif ringKind == "Footstep" then 1.5 else 2.5),
 		Transparency = 1,
 	}
-	if ringKind == "Paddle" then
+	if ringKind == "Paddle" or ringKind == "Footstep" then
 		tweenGoal.Position = Vector3.new(requestedPosition.X, surfaceY, requestedPosition.Z)
 	end
 	local tween = TweenService:Create(
 		ring,
-		TweenInfo.new(if ringKind == "Paddle" then 0.85 else 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		TweenInfo.new(if ringKind == "Paddle" then 0.85 elseif ringKind == "Footstep" then 0.45 else 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 		tweenGoal
 	)
 	tween:Play()
-	Debris:AddItem(ring, if ringKind == "Paddle" then 1 else 1.0)
+	Debris:AddItem(ring, if ringKind == "Paddle" then 1 elseif ringKind == "Footstep" then 0.6 else 1.0)
 end)
 
 game.Players.PlayerRemoving:Connect(function(player)

@@ -13,11 +13,17 @@ local WaterConfig = require(
 		:WaitForChild("Modules")
 		:WaitForChild("WaterConfig")
 )
+local WaterWaveSampler = require(
+	ReplicatedStorage
+		:WaitForChild("Modules")
+		:WaitForChild("WaterWaveSampler")
+)
 
 local waterSounds = ReplicatedStorage
 	:WaitForChild("Shared")
 	:WaitForChild("Sounds")
 	:WaitForChild("Water")
+local splashEvent = ReplicatedStorage:WaitForChild("WaterSplashRingEvent")
 
 local splashTemplate = waterSounds:WaitForChild("WaterSplashEntry")
 assert(
@@ -28,9 +34,9 @@ assert(
 local player = Players.LocalPlayer
 
 local FOOT_WATER_DEPTH = 4
-local FOOT_WATER_MARGIN = 0.6
-local MIN_ROOT_HEIGHT_ABOVE_SURFACE = 0.8
-local MAX_ROOT_HEIGHT_ABOVE_SURFACE = 4.0
+local FOOT_WATER_MARGIN = 1.0
+local MIN_ROOT_HEIGHT_ABOVE_SURFACE = 0.4
+local MAX_ROOT_HEIGHT_ABOVE_SURFACE = 5.0
 local MIN_STEP_INTERVAL = 0.24
 local MAX_STEP_INTERVAL = 0.55
 local STEP_SPEED_SCALE = 0.018
@@ -113,27 +119,29 @@ local function getFootParts(currentCharacter: Model): { BasePart }
 	return parts
 end
 
-local function feetTouchWater(currentCharacter: Model, currentRoot: BasePart): boolean
+local function feetTouchWater(currentCharacter: Model, currentRoot: BasePart): (boolean, BasePart?)
 	local surfaceY = WaterConfig.GetSurfaceY()
 	local rootHeight = currentRoot.Position.Y - surfaceY
 	if rootHeight < MIN_ROOT_HEIGHT_ABOVE_SURFACE
 		or rootHeight > MAX_ROOT_HEIGHT_ABOVE_SURFACE
 	then
-		return false
+		return false, nil
 	end
 
 	for _, foot in getFootParts(currentCharacter) do
 		local footY = foot.Position.Y
-		if footY <= surfaceY + FOOT_WATER_MARGIN
-			and footY >= surfaceY - FOOT_WATER_DEPTH
+		local wave = WaterWaveSampler.Sample(foot.Position.X, foot.Position.Z, nil, 6)
+		local animatedSurfaceY = surfaceY + wave.Height
+		if footY <= animatedSurfaceY + FOOT_WATER_MARGIN
+			and footY >= animatedSurfaceY - FOOT_WATER_DEPTH
 		then
-			return true
+			return true, foot
 		end
 	end
-	return false
+	return false, nil
 end
 
-local function playWaterStep(speed: number)
+local function playWaterStep(speed: number, foot: BasePart?)
 	local sound = waterFootstep
 	if not sound then
 		return
@@ -142,6 +150,12 @@ local function playWaterStep(speed: number)
 	sound.PlaybackSpeed = math.clamp(0.9 + speed / 24, 0.9, 1.45)
 	sound.TimePosition = 0
 	sound:Play()
+	if foot then
+		splashEvent:FireServer(
+			Vector3.new(foot.Position.X, WaterConfig.GetSurfaceY() + 0.1, foot.Position.Z),
+			"Footstep"
+		)
+	end
 end
 
 player.CharacterAdded:Connect(setupCharacter)
@@ -157,7 +171,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
 		return
 	end
 
-	local touchingWater = feetTouchWater(currentCharacter, currentRoot)
+	local touchingWater, touchingFoot = feetTouchWater(currentCharacter, currentRoot)
 	if not touchingWater then
 		restoreRunningSounds()
 		stepClock = 0
@@ -179,7 +193,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
 
 	stepClock -= deltaTime
 	if stepClock <= 0 then
-		playWaterStep(speed)
+		playWaterStep(speed, touchingFoot)
 		stepClock = math.clamp(
 			MAX_STEP_INTERVAL - speed * STEP_SPEED_SCALE,
 			MIN_STEP_INTERVAL,
@@ -187,4 +201,3 @@ RunService.Heartbeat:Connect(function(deltaTime)
 		)
 	end
 end)
-

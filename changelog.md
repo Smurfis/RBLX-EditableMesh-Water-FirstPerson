@@ -223,6 +223,10 @@ The paddle trigger now follows horizontal swimming speed and alternates hands. I
 
 The entry ring now starts 10% wider and 50% thicker vertically, with a slightly longer fade, so the first jump into the water reads clearly before disappearing.
 
+Shallow-water walking audio now checks the shared animated wave height at each foot rather than only the fixed base surface. The footstep band was widened slightly so standing and walking through visible wave crests keeps the water sound active instead of falling back to solid-ground audio.
+
+Walking just above the shoreline now also emits a small replicated `WaterFootstepRing` at the detected foot. These rings start slightly above CoastLine, settle into the waterline and fade quickly, creating a subtle bubble/splash contact without using the heavier entry effect.
+
 ### Source Assets
 
 - Moved the unchanged wave-line texture to `Imgs/AlphaMaskOverlay/WindWaker_WaveLines_01.png`.
