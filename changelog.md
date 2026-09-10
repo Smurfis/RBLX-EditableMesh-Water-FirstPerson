@@ -219,6 +219,8 @@ This is replicated visual feedback at the configured base surface. It does not e
 
 The follow-up paddle pass separates airborne entry from surface contact. An entry ring is armed only after the player has clearly left the water, so holding Space or small surface bobbing cannot repeatedly fire the entry effect. While `SurfaceHold` is active, hand movement near the waterline emits a restrained ring at most once every 0.85 seconds, creating the requested paddling response around the player's hands.
 
+The paddle trigger now follows horizontal swimming speed and alternates hands. It places each smaller ring 1.35 studs ahead of the active hand at the CoastLine/waterline, so forward swimming produces the pushing-water illusion even when the hand animation remains visually above the surface. Paddle rings use the same replicated surface effect and are scaled to 72% of the entry ring.
+
 ### Source Assets
 
 - Moved the unchanged wave-line texture to `Imgs/AlphaMaskOverlay/WindWaker_WaveLines_01.png`.

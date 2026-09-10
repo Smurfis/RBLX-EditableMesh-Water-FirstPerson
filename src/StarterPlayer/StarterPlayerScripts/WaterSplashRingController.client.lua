@@ -18,14 +18,14 @@ local event = ReplicatedStorage:WaitForChild("WaterSplashRingEvent")
 local ENTRY_HEIGHT = WaterConfig.Swimming.EnterOffset
 local ENTRY_REARM_HEIGHT = 4
 local PADDLE_INTERVAL = 0.85
-local PADDLE_HAND_RANGE = 1.6
-local PADDLE_DISTANCE = 0.12
+local PADDLE_FORWARD_DISTANCE = 1.35
+local PADDLE_MIN_SPEED = 1.5
 
 local root: BasePart? = nil
 local previousRootY: number? = nil
-local previousHands: { [string]: Vector3 } = {}
 local entryArmed = true
 local lastPaddleAt = -math.huge
+local paddleSide = 1
 
 local function getHand(character: Model, side: string): BasePart?
 	local names = if side == "Left" then { "LeftHand", "Left Arm" } else { "RightHand", "Right Arm" }
@@ -38,16 +38,19 @@ local function getHand(character: Model, side: string): BasePart?
 	return nil
 end
 
-local function fireRing(position: Vector3)
-	event:FireServer(Vector3.new(position.X, WaterConfig.GetSurfaceY(), position.Z))
+local function fireRing(position: Vector3, ringKind: string?)
+	event:FireServer(
+		Vector3.new(position.X, WaterConfig.GetSurfaceY(), position.Z),
+		ringKind
+	)
 end
 
 local function bindCharacter(character: Model)
 	root = character:WaitForChild("HumanoidRootPart", 10) :: BasePart?
 	previousRootY = if root then root.Position.Y else nil
-	previousHands = {}
 	entryArmed = true
 	lastPaddleAt = -math.huge
+	paddleSide = 1
 end
 
 player.CharacterAdded:Connect(bindCharacter)
@@ -82,25 +85,28 @@ RunService.RenderStepped:Connect(function()
 		fireRing(currentRoot.Position)
 	end
 
-	-- Once the entry splash has fired, show restrained surface paddling rings
-	-- near the hands. SurfaceHold is owned by SwimmingController and stays false
-	-- while the player is jumping, so holding Space cannot spam entry splashes.
+	-- Surface paddling follows swimming direction rather than hand height. The
+	-- hand animation often leaves hands visibly above the surface while moving
+	-- forward, so place an alternating ring just ahead of each hand at the
+	-- CoastLine/waterline instead.
 	if PlayerWaveMotionState.SurfaceHold and os.clock() - lastPaddleAt >= PADDLE_INTERVAL then
 		local character = currentRoot.Parent
 		if character and character:IsA("Model") then
-			for _, side in ipairs({ "Left", "Right" }) do
-				local hand = getHand(character, side)
-				if hand then
-					local handPosition = hand.Position
-					local previousHand = previousHands[side]
-					previousHands[side] = handPosition
-					if math.abs(handPosition.Y - surfaceY) <= PADDLE_HAND_RANGE
-						and previousHand
-						and (handPosition - previousHand).Magnitude >= PADDLE_DISTANCE then
-						lastPaddleAt = os.clock()
-						fireRing(handPosition)
-						break
-					end
+				local humanoid = character:FindFirstChildOfClass("Humanoid")
+				local velocity = currentRoot.AssemblyLinearVelocity
+				local movement = Vector3.new(velocity.X, 0, velocity.Z)
+				if movement.Magnitude < PADDLE_MIN_SPEED and humanoid then
+					movement = Vector3.new(humanoid.MoveDirection.X, 0, humanoid.MoveDirection.Z)
+				end
+				if movement.Magnitude >= PADDLE_MIN_SPEED then
+					local direction = movement.Unit
+					local sideName = if paddleSide < 0 then "Left" else "Right"
+					local hand = getHand(character, sideName)
+					local handPosition = if hand then hand.Position else currentRoot.Position
+					local ringPosition = handPosition + direction * PADDLE_FORWARD_DISTANCE
+					lastPaddleAt = os.clock()
+					paddleSide *= -1
+					fireRing(ringPosition, "Paddle")
 				end
 			end
 		end

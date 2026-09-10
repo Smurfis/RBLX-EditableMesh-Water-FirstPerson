@@ -32,8 +32,11 @@ local function getTemplate(): BasePart?
 	return nil
 end
 
-event.OnServerEvent:Connect(function(player, requestedPosition)
+event.OnServerEvent:Connect(function(player, requestedPosition, ringKind)
 	if typeof(requestedPosition) ~= "Vector3" then
+		return
+	end
+	if ringKind ~= nil and ringKind ~= "Paddle" then
 		return
 	end
 
@@ -62,7 +65,7 @@ event.OnServerEvent:Connect(function(player, requestedPosition)
 
 	lastSplashAt[player] = now
 	local ring = template:Clone()
-	ring.Name = "WaterSplashRing"
+	ring.Name = if ringKind == "Paddle" then "WaterPaddleRing" else "WaterSplashRing"
 	ring.Anchored = true
 	ring.CanCollide = false
 	ring.CanTouch = false
@@ -71,6 +74,10 @@ event.OnServerEvent:Connect(function(player, requestedPosition)
 	ring.Parent = workspace
 
 	local initialSize = ring.Size
+	if ringKind == "Paddle" then
+		initialSize *= 0.72
+		ring.Size = initialSize
+	end
 	ring.Transparency = template.Transparency
 	local tween = TweenService:Create(
 		ring,

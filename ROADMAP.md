@@ -18,6 +18,7 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Remove Player Reflections; revert experimental developer tools (`6e0ef29`).
 - [x] Replicated water-entry splash rings using the Studio `SplashRing` template (`0ca845a`).
 - [x] Separate one-shot entry rings from throttled hand-proximity paddle rings while surface holding.
+- [x] Forward surface swimming emits alternating smaller rings ahead of the hands at the CoastLine/waterline.
 
 ## Acceptance and next checks
 
