@@ -116,6 +116,8 @@ WaterSurface
 WaveFoamVFX
 ```
 
+During this investigation, `WaveFoamVFX` was made solid temporarily to remove a visual screen-tearing effect where the ocean appeared to clip through itself. This established a stable readable upper layer before the final transparency and SurfaceAppearance tuning.
+
 ### Cartoony Water V1
 
 A polished visual checkpoint was committed as `Cartoony water working v1`. The project had moved beyond the original realistic-water tutorial toward a stylized identity combining animated wave geometry, layered translucent water, bright intersection highlights, atmospheric horizon treatment, first-person swimming, and underwater depth presentation.
@@ -132,7 +134,7 @@ The player-following coastline effect was made less visually dominant with:
 EFFECT_OPACITY_MULTIPLIER = 0.55
 ```
 
-Further transparency tuning was performed manually in Studio on the Neon and upper visual layers.
+This runtime opacity change allowed the visible `SurfaceAppearance` changes on the generated water to be evaluated clearly. The `__ClientCoastlineEffect` SurfaceAppearance settings themselves were not changed. Further transparency tuning was performed manually in Studio on the Neon and upper visual layers.
 
 ### Wind Waker Surface Effect — First Successful Version
 
@@ -154,7 +156,7 @@ WaterOverlaySurfaceAppearance
 ColorMap = rbxassetid://92873785961587
 ```
 
-The Neon coastline and upper water layer were made slightly more transparent so all effects remain visible together. This produced the first successful Wind Waker-style cellular wave overlay integrated with the moving EditableMesh ocean.
+The Neon coastline and upper water layer were made slightly more transparent so all effects remain visible together. The coastline SurfaceAppearance itself was left unchanged. This produced the first successful Wind Waker-style cellular wave overlay integrated with the moving EditableMesh ocean.
 
 The current look combines:
 
