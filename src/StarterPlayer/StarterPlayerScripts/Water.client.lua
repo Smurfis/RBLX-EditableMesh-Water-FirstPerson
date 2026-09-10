@@ -233,9 +233,9 @@ local WATER_COASTLINE_COLOR = Color3.fromRGB(236, 235, 226)
 local WATER_COASTLINE_TRANSPARENCY = 0
 
 -- Temporary isolation switch while diagnosing the camera-angle visual bug.
--- Keep the generated CoastLine instance in the folder so this test can be
+-- Keep the generated WaveLines instance in the folder so this test can be
 -- reversed without rebuilding the renderer's layer structure.
-local HIDE_GENERATED_COASTLINE = false
+local HIDE_GENERATED_WAVELINES = false
 
 local deepColor =
 	Color3.fromRGB(
@@ -1063,15 +1063,15 @@ local waterMesh =
 
 -- White upper pass. This is the deliberate "engine abuse" layer that
 -- attempts to reproduce the bright stylized intersection/rim effect.
-local coastLineMesh =
+local waveLinesMesh =
 	createWaterLayer(
-		"CoastLine",
+		"WaveLines",
 		WATER_COASTLINE_COLOR,
 		WATER_COASTLINE_TRANSPARENCY
 	)
 
-if HIDE_GENERATED_COASTLINE then
-	coastLineMesh.Transparency = 1
+if HIDE_GENERATED_WAVELINES then
+	waveLinesMesh.Transparency = 1
 end
 
 -- Clone the preconfigured SurfaceAppearance ONLY onto the white upper
@@ -1090,7 +1090,7 @@ if overlayTemplate and overlayTemplate:IsA("SurfaceAppearance") then
 		"SurfaceAppearance"
 
 	overlay.Parent =
-		coastLineMesh
+		waveLinesMesh
 else
 	warn(
 		"[Water V4] Missing SurfaceAppearance '"
@@ -1757,7 +1757,7 @@ local function updateMeshAnchor(
 			newZ
 		)
 
-	coastLineMesh.CFrame =
+	waveLinesMesh.CFrame =
 		CFrame.new(
 			newX,
 			surfaceY + WATER_COASTLINE_Y_OFFSET,
