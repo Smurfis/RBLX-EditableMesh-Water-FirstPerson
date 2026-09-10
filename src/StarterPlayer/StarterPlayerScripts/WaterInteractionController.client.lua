@@ -25,10 +25,10 @@ local ROTATION_RESPONSE = 6
 local MAX_UPDATE_DISTANCE = 500
 
 local PROFILES = {
-	SmallProp = { SampleCount = 1, Octaves = 8, UpdateHz = 30 },
-	MediumProp = { SampleCount = 3, Octaves = 8, UpdateHz = 30 },
-	Boat = { SampleCount = 6, Octaves = 6, UpdateHz = 30 },
-	LargeShip = { SampleCount = 8, Octaves = 4, UpdateHz = 20 },
+	SmallProp = { SampleCount = 1, Octaves = 8, UpdateHz = 30, PositionResponse = 7, RotationResponse = 6 },
+	MediumProp = { SampleCount = 3, Octaves = 6, UpdateHz = 24, PositionResponse = 4, RotationResponse = 3 },
+	Boat = { SampleCount = 6, Octaves = 6, UpdateHz = 24, PositionResponse = 3, RotationResponse = 2 },
+	LargeShip = { SampleCount = 8, Octaves = 4, UpdateHz = 20, PositionResponse = 2, RotationResponse = 1.5 },
 }
 
 type InteractableState = {
@@ -122,8 +122,16 @@ end
 
 local function getProfile(instance: Instance)
 	local name = instance:GetAttribute("WaterProfile")
-	if typeof(name) == "string" and PROFILES[name] then
-		return PROFILES[name]
+	if typeof(name) == "string" then
+		local normalized = string.lower(name)
+		if normalized == "medprop" then
+			return PROFILES.MediumProp
+		end
+		for profileName, profile in PROFILES do
+			if string.lower(profileName) == normalized then
+				return profile
+			end
+		end
 	end
 	return PROFILES.SmallProp
 end
@@ -318,9 +326,9 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 		state.updateTimer = 1 / profile.UpdateHz
 	end
 
-	local alpha = 1 - math.exp(-POSITION_RESPONSE * dt)
+	local alpha = 1 - math.exp(-(profile.PositionResponse or POSITION_RESPONSE) * dt)
 	state.currentY = state.currentY + (state.targetY - state.currentY) * alpha
-	local rotationAlpha = 1 - math.exp(-ROTATION_RESPONSE * dt)
+	local rotationAlpha = 1 - math.exp(-(profile.RotationResponse or ROTATION_RESPONSE) * dt)
 	state.currentRotation = state.currentRotation:Lerp(state.targetRotation, rotationAlpha)
 
 	movePose(

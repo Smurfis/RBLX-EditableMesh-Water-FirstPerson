@@ -179,6 +179,8 @@ Work in this section is on `water-gerstner-buoyancy-test`, created from `b45789e
 
 The Gerstner experiment uses the ocean's existing stylized wave implementation; it did not replace the wave field with a new textbook Gerstner formula. Floating objects sample those same waves, with profile-specific filtering.
 
+Medium props now use six octaves at 24 Hz with slower position and rotation response, reducing frantic chop and making larger test objects follow broader ocean swells. Profile names are case-insensitive and `medprop` resolves to `MediumProp`.
+
 ### Opt-In Buoyancy and Deformation
 
 - `d4fed6a` added smooth height following for Parts and Models tagged `WaterInteractable`; untagged geometry is untouched and Models require a `PrimaryPart`.
