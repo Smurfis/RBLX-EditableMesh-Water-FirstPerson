@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
@@ -19,14 +20,57 @@ gui.ResetOnSpawn = false
 gui.Parent = playerGui
 
 local container = Instance.new("Frame")
-container.Size = UDim2.fromOffset(300, 300)
+local SETTINGS_SIZE = UDim2.fromOffset(360, 300)
+container.Size = UDim2.fromOffset(0, 300)
 container.Position = UDim2.fromScale(0.5, 0.5)
 container.AnchorPoint = Vector2.new(0.5, 0.5)
+container.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
+container.BackgroundTransparency = 0.08
+container.BorderSizePixel = 0
+container.ClipsDescendants = true
 container.Visible = false
 container.Parent = gui
 
+local panelCorner = Instance.new("UICorner")
+panelCorner.CornerRadius = UDim.new(0, 8)
+panelCorner.Parent = container
+
+local panelStroke = Instance.new("UIStroke")
+panelStroke.Color = Color3.fromRGB(120, 180, 220)
+panelStroke.Transparency = 0.35
+panelStroke.Parent = container
+
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Position = UDim2.fromOffset(16, 10)
+title.Size = UDim2.new(1, -32, 0, 28)
+title.BackgroundTransparency = 1
+title.Text = "SETTINGS"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = container
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Name = "SettingsList"
+scroll.Position = UDim2.fromOffset(12, 46)
+scroll.Size = UDim2.new(1, -24, 1, -58)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 5
+scroll.ScrollBarImageColor3 = Color3.fromRGB(120, 180, 220)
+scroll.CanvasSize = UDim2.fromOffset(0, 0)
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.Parent = container
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 10)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Parent = scroll
+
 local reflections = Checkbox.new(
-	container,
+	scroll,
 	"Player Reflections",
 	true,
 	function(enabled)
@@ -39,8 +83,115 @@ local reflections = Checkbox.new(
 		end
 	end
 )
+reflections.Frame.LayoutOrder = 1
 
-reflections.Frame.Position = UDim2.fromOffset(20, 20)
+local function createSlider(
+	name: string,
+	labelText: string,
+	defaultValue: number,
+	callback: (number) -> ()
+): Frame
+	local frame = Instance.new("Frame")
+	frame.Name = name
+	frame.Size = UDim2.new(1, -8, 0, 48)
+	frame.BackgroundTransparency = 1
+	frame.LayoutOrder = 2
+	frame.Parent = scroll
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 0, 20)
+	label.BackgroundTransparency = 1
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.Font = Enum.Font.Gotham
+	label.TextSize = 14
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = frame
+
+	local track = Instance.new("Frame")
+	track.Position = UDim2.fromOffset(0, 28)
+	track.Size = UDim2.new(1, 0, 0, 8)
+	track.BackgroundColor3 = Color3.fromRGB(60, 70, 82)
+	track.BorderSizePixel = 0
+	track.Parent = frame
+
+	local trackCorner = Instance.new("UICorner")
+	trackCorner.CornerRadius = UDim.new(1, 0)
+	trackCorner.Parent = track
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.fromScale(defaultValue, 1)
+	fill.BackgroundColor3 = Color3.fromRGB(100, 190, 240)
+	fill.BorderSizePixel = 0
+	fill.Parent = track
+
+	local fillCorner = Instance.new("UICorner")
+	fillCorner.CornerRadius = UDim.new(1, 0)
+	fillCorner.Parent = fill
+
+	local knob = Instance.new("TextButton")
+	knob.Name = "Knob"
+	knob.AnchorPoint = Vector2.new(0.5, 0.5)
+	knob.Position = UDim2.fromScale(defaultValue, 0.5)
+	knob.Size = UDim2.fromOffset(16, 16)
+	knob.BackgroundColor3 = Color3.fromRGB(235, 250, 255)
+	knob.Text = ""
+	knob.AutoButtonColor = false
+	knob.Parent = track
+
+	local knobCorner = Instance.new("UICorner")
+	knobCorner.CornerRadius = UDim.new(1, 0)
+	knobCorner.Parent = knob
+
+	local value = defaultValue
+	local dragging = false
+
+	local function setValue(nextValue: number)
+		value = math.clamp(nextValue, 0, 1)
+		fill.Size = UDim2.fromScale(value, 1)
+		knob.Position = UDim2.fromScale(value, 0.5)
+		label.Text = string.format("%s: %d%%", labelText, math.floor(value * 100 + 0.5))
+		callback(value)
+	end
+
+	local function updateFromInput(input: InputObject)
+		local width = math.max(track.AbsoluteSize.X, 1)
+		setValue((input.Position.X - track.AbsolutePosition.X) / width)
+	end
+
+	knob.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			updateFromInput(input)
+		end
+	end)
+	track.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			updateFromInput(input)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			updateFromInput(input)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	setValue(defaultValue)
+	return frame
+end
+
+createSlider("WaterOpacitySlider", "Water opacity", 0.75, function(value)
+	container:SetAttribute("WaterOpacity", value)
+end)
+
+createSlider("CameraSensitivitySlider", "Camera sensitivity", 0.5, function(value)
+	container:SetAttribute("CameraSensitivity", value)
+end)
 
 local statusGui = Instance.new("ScreenGui")
 statusGui.Name = "ProjectStatusGui"
@@ -171,6 +322,7 @@ statusLabel.Parent = statusGui
 
 local SETTINGS_TOGGLE_KEY = Enum.KeyCode.K
 local mouseReleased = false
+local settingsOpen = false
 
 local function updateMouseUi()
 	freeMouseRow.Visible = mouseReleased
@@ -179,22 +331,61 @@ end
 
 updateMouseUi()
 
+local settingsTweenInfo = TweenInfo.new(
+	0.24,
+	Enum.EasingStyle.Quart,
+	Enum.EasingDirection.Out
+)
+
+local function setSettingsOpen(open: boolean)
+	settingsOpen = open
+
+	if open then
+		mouseReleased = true
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		UserInputService.MouseIconEnabled = true
+		updateMouseUi()
+		container.Visible = true
+		TweenService:Create(container, settingsTweenInfo, {
+			Size = SETTINGS_SIZE,
+		}):Play()
+		return
+	end
+
+	mouseReleased = false
+	UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+	UserInputService.MouseIconEnabled = false
+	updateMouseUi()
+
+	local tween = TweenService:Create(container, settingsTweenInfo, {
+		Size = UDim2.fromOffset(0, SETTINGS_SIZE.Y.Offset),
+	})
+	tween.Completed:Connect(function()
+		if not settingsOpen then
+			container.Visible = false
+		end
+	end)
+	tween:Play()
+end
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then
+		return
+	end
+
+	if input.KeyCode == SETTINGS_TOGGLE_KEY then
+		setSettingsOpen(not settingsOpen)
+		return
+	end
+
+	if settingsOpen then
 		return
 	end
 
 	if input.KeyCode == Enum.KeyCode.M then
 		mouseReleased = not mouseReleased
 		updateMouseUi()
-		return
 	end
-
-	if input.KeyCode ~= SETTINGS_TOGGLE_KEY then
-		return
-	end
-
-	container.Visible = not container.Visible
 end)
 
 local serverId = game.JobId
