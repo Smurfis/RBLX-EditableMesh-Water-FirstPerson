@@ -247,6 +247,8 @@ local freeMouseRow = createKeybindRow(
 	"Free Mouse: M",
 	-70
 )
+local settingsIcon = settingsRow:FindFirstChild("Icon")
+local mouseIcon = freeMouseRow:FindFirstChild("Icon")
 
 local reticle = Instance.new("Frame")
 reticle.Name = "FirstPersonReticle"
@@ -324,6 +326,12 @@ local mouseReleased = false
 local settingsOpen = false
 
 local function updateMouseUi()
+	if settingsIcon and settingsIcon:IsA("ImageLabel") then
+		settingsIcon.Visible = not settingsOpen
+	end
+	if mouseIcon and mouseIcon:IsA("ImageLabel") then
+		mouseIcon.Visible = mouseReleased
+	end
 	reticle.Visible = not mouseReleased
 end
 
