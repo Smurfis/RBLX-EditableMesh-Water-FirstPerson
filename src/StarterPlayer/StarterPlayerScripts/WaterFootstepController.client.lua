@@ -42,7 +42,7 @@ local FOOT_RING_CONTACT_TOLERANCE = 0.75
 local FOOT_RING_HEIGHT_OFFSET = 0.08
 local FOOT_CONTACT_OFFSET = WaterConfig.Swimming.SurfaceTest.FootContactOffset or 1.458
 local MIN_ROOT_HEIGHT_ABOVE_SURFACE = 0.4
-local MAX_ROOT_HEIGHT_ABOVE_SURFACE = 5.0
+local MAX_ROOT_HEIGHT_ABOVE_SURFACE = 6.0
 local MIN_STEP_INTERVAL = 0.24
 local MAX_STEP_INTERVAL = 0.55
 local STEP_SPEED_SCALE = 0.018
@@ -138,10 +138,11 @@ local function feetTouchWater(currentCharacter: Model, currentRoot: BasePart): (
 		local footY = foot.Position.Y
 		local wave = WaterWaveSampler.Sample(foot.Position.X, foot.Position.Z, nil, 6)
 		local animatedSurfaceY = surfaceY + wave.Height
-		if footY <= animatedSurfaceY + FOOT_WATER_MARGIN
-			and footY >= animatedSurfaceY - FOOT_WATER_DEPTH
+		local footContactY = surfaceY + FOOT_CONTACT_OFFSET
+		local shallowTopY = math.max(animatedSurfaceY + FOOT_WATER_MARGIN, footContactY + FOOT_WATER_MARGIN)
+		if footY <= shallowTopY
+			and footY >= footContactY - FOOT_WATER_DEPTH
 		then
-			local footContactY = surfaceY + FOOT_CONTACT_OFFSET
 			local ringSurfaceY = if footY <= footContactY + FOOT_RING_CONTACT_TOLERANCE
 				and footY >= footContactY - FOOT_WATER_DEPTH
 				then footContactY
@@ -197,6 +198,18 @@ RunService.Heartbeat:Connect(function(deltaTime)
 			sound.Volume = 0
 			if sound.IsPlaying then
 				sound:Stop()
+			end
+		end
+	end
+	for _, descendant in currentCharacter:GetDescendants() do
+		if isRunningSound(descendant) then
+			local runningSound = descendant :: Sound
+			if savedRunningVolumes[runningSound] == nil then
+				savedRunningVolumes[runningSound] = runningSound.Volume
+			end
+			runningSound.Volume = 0
+			if runningSound.IsPlaying then
+				runningSound:Stop()
 			end
 		end
 	end

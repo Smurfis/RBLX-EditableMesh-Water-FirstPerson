@@ -239,6 +239,8 @@ When movement stops, the sound now finishes its current one-, two- or three-seco
 
 While shallow water is active, captured Roblox `Running` sounds are now explicitly stopped as well as muted. This prevents the default footstep system from restarting or cutting across `ShallowFootsteps`; normal running sound volume is restored after leaving the water band.
 
+The shallow eligibility check now includes the calibrated foot-contact plane, rather than requiring the foot to be inside a lower animated-crest window. This keeps rings active on the Y=6.901 shoreline floor even when the local wave sample is lower, and the root-height allowance is raised to six studs for that near-surface ledge.
+
 The controller now checks for that Studio sound without an infinite wait. If it is absent or misnamed, it warns once and falls back to `WaterSplashEntry` so shallow-water movement remains functional until `ShallowFootsteps` is placed under `ReplicatedStorage.Shared.Sounds.Water`.
 
 Raised the shallow-footstep detection margin from 1.0 to 1.4 studs so walking on a floor around Y=6.901, just above the visible wave threshold, still processes shallow-water footsteps. Footprint placement remains governed by the measured Y=7.458 contact plane.
