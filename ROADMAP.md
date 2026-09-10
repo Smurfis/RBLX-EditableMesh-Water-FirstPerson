@@ -26,6 +26,8 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Footprint contact height is centralised and tuned to the measured shoreline plane Y=7.458.
 - [x] Footprint rings use a distinct non-ForceField material.
 - [x] Shallow walking uses the looping `ShallowFootsteps` Studio sound with a one-second release window.
+- [x] Missing shallow-footstep assets fail soft with a warning and entry-sound fallback.
+- [x] Shallow-footstep detection accepts the near-surface floor band above the visible wave edge.
 - [x] Replicated splash rings emit size-appropriate centre particle bursts using the supplied rainsplash texture.
 
 ## Acceptance and next checks

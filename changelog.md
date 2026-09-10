@@ -235,6 +235,10 @@ Footstep rings use `SmoothPlastic` instead of the ForceField material used by en
 
 Shallow walking now uses the Studio-managed `ShallowFootsteps` sound. Its three-second clip loops while movement continues, plays for up to one second after a short movement, and stops when the player leaves the shallow-water band. The per-foot shoreline rings remain tied to the movement cadence.
 
+The controller now checks for that Studio sound without an infinite wait. If it is absent or misnamed, it warns once and falls back to `WaterSplashEntry` so shallow-water movement remains functional until `ShallowFootsteps` is placed under `ReplicatedStorage.Shared.Sounds.Water`.
+
+Raised the shallow-footstep detection margin from 1.0 to 1.4 studs so walking on a floor around Y=6.901, just above the visible wave threshold, still processes shallow-water footsteps. Footprint placement remains governed by the measured Y=7.458 contact plane.
+
 The replicated splash rings now emit the supplied rainsplash texture (`rbxassetid://105796658952670`) from their centre. Jump entries use a larger 18-particle burst, paddle rings use a restrained three-particle burst, and footstep rings use a small four-particle burst.
 
 ### Source Assets

@@ -25,13 +25,19 @@ local waterSounds = ReplicatedStorage
 	:WaitForChild("Water")
 local splashEvent = ReplicatedStorage:WaitForChild("WaterSplashRingEvent")
 
-local shallowFootstepTemplate = waterSounds:WaitForChild("ShallowFootsteps")
+local shallowFootstepTemplate = waterSounds:FindFirstChild("ShallowFootsteps")
+if not shallowFootstepTemplate or not shallowFootstepTemplate:IsA("Sound") then
+	warn("[WaterFootsteps] ShallowFootsteps is missing from ReplicatedStorage.Shared.Sounds.Water; falling back to WaterSplashEntry.")
+	shallowFootstepTemplate = waterSounds:WaitForChild("WaterSplashEntry")
+end
 assert(shallowFootstepTemplate:IsA("Sound"), "ReplicatedStorage.Shared.Sounds.Water.ShallowFootsteps must be a Sound")
 
 local player = Players.LocalPlayer
 
 local FOOT_WATER_DEPTH = 4
-local FOOT_WATER_MARGIN = 1.0
+-- Keep shallow walking active slightly above the visible wave edge. The
+-- footprint ring still uses the separate calibrated foot-contact plane.
+local FOOT_WATER_MARGIN = 1.4
 local FOOT_RING_CONTACT_TOLERANCE = 0.05
 local FOOT_RING_HEIGHT_OFFSET = 0.08
 local FOOT_CONTACT_OFFSET = WaterConfig.Swimming.SurfaceTest.FootContactOffset or 1.458
