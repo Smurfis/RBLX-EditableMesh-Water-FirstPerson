@@ -88,22 +88,37 @@ local function getPlatformCFrame(platform: Instance): CFrame?
 end
 
 local function getSupportingPart(currentHumanoid: Humanoid, currentRoot: BasePart): BasePart?
-	if currentHumanoid.FloorMaterial == Enum.Material.Air then
-		return nil
-	end
-
 	local params = floorRaycastParams
 	if not params then
 		return nil
 	end
 
 	local distance = math.max(currentHumanoid.HipHeight + 3, 5)
-	local result = workspace:Raycast(
-		currentRoot.Position,
-		Vector3.new(0, -distance, 0),
-		params
-	)
-	return if result then result.Instance else nil
+	local right = currentRoot.CFrame.RightVector
+	local look = currentRoot.CFrame.LookVector
+	local supportOffsets = {
+		Vector3.zero,
+		right * 1.25,
+		right * -1.25,
+		look * 1.25,
+		look * -1.25,
+	}
+
+	-- A centre-only ray loses support as soon as the character reaches a
+	-- platform corner. Keep a small footprint of downward probes so one
+	-- supported foot is enough to carry the character through the rotation.
+	for _, offset in ipairs(supportOffsets) do
+		local result = workspace:Raycast(
+			currentRoot.Position + offset,
+			Vector3.new(0, -distance, 0),
+			params
+		)
+		if result then
+			return result.Instance
+		end
+	end
+
+	return nil
 end
 
 local function carryCharacter()
@@ -111,7 +126,6 @@ local function carryCharacter()
 	local currentRoot = root
 	if not currentHumanoid or not currentRoot or not currentRoot.Parent
 		or currentHumanoid.Health <= 0
-		or currentHumanoid.FloorMaterial == Enum.Material.Air
 		or currentHumanoid.Sit
 		or currentHumanoid.PlatformStand
 	then
