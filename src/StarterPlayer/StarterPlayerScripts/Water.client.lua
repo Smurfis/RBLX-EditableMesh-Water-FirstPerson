@@ -58,11 +58,6 @@ local WaterConfig =
 		:WaitForChild("WaterConfig")
 	)
 
-local WaterAssets =
-	ReplicatedStorage
-	:WaitForChild("Shared")
-	:WaitForChild("Assets")
-
 local function getSurfaceY(): number
 	return WaterConfig.GetSurfaceY()
 end
@@ -203,8 +198,6 @@ local LOD_FAR_END_SQ = LOD_FAR_END * LOD_FAR_END
 -- IMPORTANT:
 -- These are rendering layers only. Wave geometry is still calculated once.
 
-local WATER_OVERLAY_TEMPLATE_NAME = "WaterOverlaySurfaceAppearance"
-
 -- The source water this look came from was roughly 248 studs across, so
 -- use that as the world-space repeat size. UVs are re-anchored whenever
 -- the treadmill moves so the pattern stays locked to world coordinates.
@@ -215,11 +208,13 @@ local WATER_OVERLAY_WORLD_TILE_SIZE = 248
 local WATER_BASE_Y_OFFSET = -0.10
 local WATER_MIDDLE_Y_OFFSET = -0.045
 local WATER_SURFACE_Y_OFFSET = 0
-local WATER_COASTLINE_Y_OFFSET = 0.055
+-- Keep the generated foam pass on the exact gameplay surface. The former
+-- SurfaceAppearance overlay did not contribute to the rendered result.
+local WATER_WAVE_FOAM_Y_OFFSET = 0
 
 -- Three underlying glass passes plus the white top pass.
--- The top pass matches the reference values you gave:
--- RGB 248,248,248 / Glass / Transparency 0.15 / SurfaceAppearance Overlay.
+-- The top pass is a plain white MeshPart layer so its position and
+-- transparency remain predictable while the water is animated.
 local WATER_BASE_COLOR = Color3.fromRGB(15, 75, 120)
 local WATER_BASE_TRANSPARENCY = 0.58
 
@@ -1074,31 +1069,6 @@ if HIDE_GENERATED_WAVELINES then
 	waveLinesMesh.Transparency = 1
 end
 
--- Clone the preconfigured SurfaceAppearance ONLY onto the white upper
--- layer. We intentionally do NOT assign ColorMap from this LocalScript
--- because Roblox restricts that property at runtime.
-local overlayTemplate =
-	WaterAssets:FindFirstChild(
-		WATER_OVERLAY_TEMPLATE_NAME
-	)
-
-if overlayTemplate and overlayTemplate:IsA("SurfaceAppearance") then
-	local overlay =
-		overlayTemplate:Clone()
-
-	overlay.Name =
-		"SurfaceAppearance"
-
-	overlay.Parent =
-		waveLinesMesh
-else
-	warn(
-		"[Water V4] Missing SurfaceAppearance '"
-			.. WATER_OVERLAY_TEMPLATE_NAME
-			.. "' in ReplicatedStorage.Shared.Assets. Set ColorMap to rbxassetid://521579191 and AlphaMode to Overlay."
-	)
-end
-
 waterFolder:SetAttribute(
 	"StackedWaterLayers",
 	4
@@ -1760,7 +1730,7 @@ local function updateMeshAnchor(
 	waveLinesMesh.CFrame =
 		CFrame.new(
 			newX,
-			surfaceY + WATER_COASTLINE_Y_OFFSET,
+			surfaceY + WATER_WAVE_FOAM_Y_OFFSET,
 			newZ
 		)
 
