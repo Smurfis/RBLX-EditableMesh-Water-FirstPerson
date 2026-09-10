@@ -55,16 +55,8 @@ local function getRoot(instance: Instance): (BasePart?, Model?)
 	end
 
 	if instance:IsA("Model") then
-		local primaryPart = instance.PrimaryPart or instance:FindFirstChild("HumanoidRootPart")
+		local primaryPart = instance.PrimaryPart or instance:FindFirstChild("HumanoidRootPart", true)
 		if not primaryPart then
-			if not warnedMissingPrimary[instance] then
-				warnedMissingPrimary[instance] = true
-				warn(
-					"[WaterInteraction] WaterInteractable Model '",
-					instance:GetFullName(),
-					"' has no PrimaryPart; ignoring it."
-				)
-			end
 			return nil, instance
 		end
 		return primaryPart, instance
@@ -80,6 +72,13 @@ local function addInteractable(instance: Instance)
 
 	local root, model = getRoot(instance)
 	if not root then
+		if instance:IsA("Model") then
+			task.delay(0.5, function()
+				if instance.Parent and CollectionService:HasTag(instance, TAG_NAME) then
+					addInteractable(instance)
+				end
+			end)
+		end
 		return
 	end
 

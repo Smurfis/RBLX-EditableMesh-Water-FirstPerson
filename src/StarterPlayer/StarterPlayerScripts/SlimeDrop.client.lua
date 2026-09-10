@@ -46,7 +46,7 @@ local function makeSplash(position: Vector3)
 end
 
 if slime and slime:IsA("Model") then
-	local root = slime.PrimaryPart or slime:FindFirstChild("HumanoidRootPart")
+	local root = slime.PrimaryPart or slime:FindFirstChild("HumanoidRootPart", true)
 	if root and root:IsA("BasePart") then
 		game:GetService("RunService").Heartbeat:Connect(function()
 			local y = root.Position.Y
