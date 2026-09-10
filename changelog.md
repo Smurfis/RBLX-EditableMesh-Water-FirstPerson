@@ -187,6 +187,8 @@ Added temporary Studio diagnostics under the `[WaterExitClimb]` prefix for Space
 
 Expanded climb detection to a five-stud wall range, three vertical wall probes, and an eight-stud near-surface allowance. This lets the controller detect low pool ledges and medium-prop edges even when the player's head is already above the water.
 
+Climb targeting now includes the first-person camera look vector alongside horizontal root probes. The final target uses the Humanoid's hip/root height and zeros linear/angular velocity before and after the tween, reducing cases where the character appears to grip but cannot complete the pull-up.
+
 The ledge height range now accepts tops up to 4.5 studs below the character root, allowing swimmers to grab lower pool edges while retaining the 4.5-stud upward climb limit.
 
 ### Opt-In Buoyancy and Deformation

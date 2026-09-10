@@ -67,8 +67,19 @@ local function findLedge(): (CFrame?, CFrame?)
 	local currentRoot, rayParams = root, params
 	if not currentRoot or not rayParams then return nil, nil end
 	local wall = nil
-	for _, height in ipairs({ 0.5, 1.35, 2.1 }) do
-		wall = workspace:Raycast(currentRoot.Position + Vector3.new(0, height, 0), currentRoot.CFrame.LookVector * WALL_DISTANCE, rayParams)
+	local camera = workspace.CurrentCamera
+	local cameraLook = if camera then camera.CFrame.LookVector else currentRoot.CFrame.LookVector
+	local horizontalLook = Vector3.new(cameraLook.X, 0, cameraLook.Z)
+	if horizontalLook.Magnitude < 0.1 then horizontalLook = currentRoot.CFrame.LookVector end
+	horizontalLook = Vector3.new(horizontalLook.X, 0, horizontalLook.Z).Unit
+	local wallRays = {
+		{ currentRoot.Position + Vector3.new(0, 1.35, 0), cameraLook },
+		{ currentRoot.Position + Vector3.new(0, 0.5, 0), horizontalLook },
+		{ currentRoot.Position + Vector3.new(0, 1.35, 0), horizontalLook },
+		{ currentRoot.Position + Vector3.new(0, 2.1, 0), horizontalLook },
+	}
+	for _, ray in ipairs(wallRays) do
+		wall = workspace:Raycast(ray[1], ray[2] * WALL_DISTANCE, rayParams)
 		if wall then break end
 	end
 	if not wall or not wall.Instance:IsA("BasePart") or not wall.Instance.CanCollide then debugLog("Wall ray missed"); return nil, nil end
@@ -81,7 +92,8 @@ local function findLedge(): (CFrame?, CFrame?)
 	if top.Position.Y < currentRoot.Position.Y - MAX_LEDGE_DROP or top.Position.Y > currentRoot.Position.Y + MAX_CLIMB_HEIGHT then debugLog("Top height outside climb range"); return nil, nil end
 	local facing = CFrame.lookAt(Vector3.zero, -normal)
 	local hang = CFrame.new(top.Position - Vector3.new(0, HANG_DROP, 0) + normal * STANDOFF) * facing
-	local climb = CFrame.new(top.Position + Vector3.new(0, 2.5, 0) + normal * (STANDOFF + 0.35)) * facing
+	local rootHeight = if humanoid then humanoid.HipHeight + currentRoot.Size.Y * 0.5 + 0.2 else 2.8
+	local climb = CFrame.new(top.Position + Vector3.new(0, rootHeight, 0) + normal * (STANDOFF + 0.35)) * facing
 	return hang, climb
 end
 
@@ -103,10 +115,18 @@ local function beginClimb()
 	if state ~= "Hanging" or not climbTarget or not root then return end
 	debugLog("Starting climb tween")
 	state = "Climbing"
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
 	if hangTrack then hangTrack:Stop(0.08) end
 	if climbTrack then climbTrack:Play(0.08) end
 	local tween = TweenService:Create(root, TweenInfo.new(CLIMB_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = climbTarget })
-	tween.Completed:Connect(function() if state == "Climbing" then clear() end end)
+	tween.Completed:Connect(function()
+		if state == "Climbing" and root then
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			clear()
+		end
+	end)
 	tween:Play()
 end
 
