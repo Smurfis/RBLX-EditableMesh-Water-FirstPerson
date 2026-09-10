@@ -229,6 +229,8 @@ While held, Slime no longer collides with the player, and pressing `E` again thr
 
 Slime now receives a faint `(255, 212, 138)` hover highlight and a matching falling trail that disables when it reaches the water.
 
+Removed the held-object orientation constraint again after testing showed it could interfere with first-person camera rotation; held Slime now uses position alignment only.
+
 The falling trail now uses texture `138569364097517` with a soft green tint.
 
 Transparent Water is now an explicit toggle. While enabled it exposes individual sliders for `WaveFoamVFX`, `WaterSurface`, `WaterMiddle`, and `WaterBase`, starts at 0.3 / 0.6 / 0.8 / 0.95 transparency, and detaches the Coastline effect. Disabling it restores the normal authored layers.
