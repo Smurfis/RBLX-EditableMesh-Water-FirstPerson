@@ -36,15 +36,25 @@ panelCorner.Parent = container
 
 local title = Instance.new("TextLabel")
 title.Name = "Title"
-title.Position = UDim2.fromOffset(16, 10)
-title.Size = UDim2.new(1, -32, 0, 28)
+title.Position = UDim2.fromOffset(48, 10)
+title.Size = UDim2.new(1, -96, 0, 28)
 title.BackgroundTransparency = 1
 title.Text = "SETTINGS"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 18
-title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextXAlignment = Enum.TextXAlignment.Center
 title.Parent = container
+
+local settingsPanelIcon = Instance.new("ImageLabel")
+settingsPanelIcon.Name = "SettingsIcon"
+settingsPanelIcon.AnchorPoint = Vector2.new(1, 0)
+settingsPanelIcon.Position = UDim2.new(1, -14, 0, 12)
+settingsPanelIcon.Size = UDim2.fromOffset(22, 22)
+settingsPanelIcon.BackgroundTransparency = 1
+settingsPanelIcon.Image = "rbxassetid://97812683336887"
+settingsPanelIcon.ScaleType = Enum.ScaleType.Fit
+settingsPanelIcon.Parent = container
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Name = "SettingsList"
@@ -73,7 +83,7 @@ local function createSlider(
 	frame.Name = name
 	frame.Size = UDim2.new(1, -8, 0, 48)
 	frame.BackgroundTransparency = 1
-	frame.LayoutOrder = 2
+	frame.LayoutOrder = 20
 	frame.Parent = scroll
 
 	local label = Instance.new("TextLabel")
@@ -186,7 +196,7 @@ local function createToggle(
 ): Frame
 	local checkbox = Checkbox.new(scroll, labelText, defaultValue, callback)
 	checkbox.Frame.Name = name
-	checkbox.Frame.LayoutOrder = 2
+	checkbox.Frame.LayoutOrder = 1
 	return checkbox.Frame
 end
 
@@ -236,6 +246,7 @@ transparentWaterToggle = Checkbox.new(scroll, "Enable Transparent Water", false,
 	end
 end)
 transparentWaterToggle.Frame.Name = "TransparentOceanToggle"
+	transparentWaterToggle.Frame.LayoutOrder = 1
 
 addTransparentWaterSlider("WaveFoamTransparencySlider", "WaveFoamVFX transparency", 0.3, "WaveFoamTransparencyOverride")
 addTransparentWaterSlider("WaterSurfaceTransparencySlider", "WaterSurface transparency", 0.6, "WaterSurfaceTransparency")
@@ -286,6 +297,7 @@ calmOceanToggle = Checkbox.new(scroll, "WIND WAKER: CALM OCEAN", false, function
 	end
 end)
 calmOceanToggle.Frame.Name = "CalmOceanModeToggle"
+calmOceanToggle.Frame.LayoutOrder = 1
 
 windWakerToggle = Checkbox.new(scroll, "WIND WAKER", true, function(enabled)
 	if enabled then
@@ -293,6 +305,7 @@ windWakerToggle = Checkbox.new(scroll, "WIND WAKER", true, function(enabled)
 	end
 end)
 windWakerToggle.Frame.Name = "WindWakerModeToggle"
+windWakerToggle.Frame.LayoutOrder = 1
 container:SetAttribute("OceanVisualMode", "WIND WAKER")
 
 local statusGui = Instance.new("ScreenGui")
