@@ -97,12 +97,38 @@ createKeybindRow(
 	-70
 )
 
-createKeybindRow(
-	"CameraKeybind",
-	"rbxassetid://16060788338",
-	"[CAMERA: KEYBIND]",
-	-42
+local freeMouseRow = createKeybindRow(
+	"FreeMouseKeybind",
+	"rbxassetid://6436212602",
+	"[Free Mouse: M]",
+	18
 )
+freeMouseRow.AnchorPoint = Vector2.new(0, 1)
+freeMouseRow.Position = UDim2.new(0, 18, 1, -18)
+local freeMouseLabel = freeMouseRow:FindFirstChild("Label")
+if freeMouseLabel and freeMouseLabel:IsA("TextLabel") then
+	freeMouseLabel.TextXAlignment = Enum.TextXAlignment.Left
+end
+
+local reticle = Instance.new("Frame")
+reticle.Name = "FirstPersonReticle"
+reticle.AnchorPoint = Vector2.new(0.5, 0.5)
+reticle.Position = UDim2.fromScale(0.5, 0.5)
+reticle.Size = UDim2.fromOffset(6, 6)
+reticle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+reticle.BackgroundTransparency = 0.1
+reticle.BorderSizePixel = 0
+reticle.Parent = statusGui
+
+local reticleCorner = Instance.new("UICorner")
+reticleCorner.CornerRadius = UDim.new(1, 0)
+reticleCorner.Parent = reticle
+
+local reticleStroke = Instance.new("UIStroke")
+reticleStroke.Color = Color3.fromRGB(0, 0, 0)
+reticleStroke.Transparency = 0.25
+reticleStroke.Thickness = 1
+reticleStroke.Parent = reticle
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "ProjectStatus"
@@ -121,10 +147,30 @@ statusLabel.RichText = false
 statusLabel.Parent = statusGui
 
 local SETTINGS_TOGGLE_KEY = Enum.KeyCode.K
+local mouseReleased = false
+
+local function updateMouseUi()
+	freeMouseRow.Visible = mouseReleased
+	reticle.Visible = not mouseReleased
+end
+
+updateMouseUi()
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed or input.KeyCode ~= SETTINGS_TOGGLE_KEY then
+	if gameProcessed then
 		return
 	end
+
+	if input.KeyCode == Enum.KeyCode.M then
+		mouseReleased = not mouseReleased
+		updateMouseUi()
+		return
+	end
+
+	if input.KeyCode ~= SETTINGS_TOGGLE_KEY then
+		return
+	end
+
 	container.Visible = not container.Visible
 end)
 
