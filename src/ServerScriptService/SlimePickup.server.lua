@@ -76,7 +76,7 @@ local function dropItem()
 	end
 	if holder and holder.Character then setHeldPose(holder.Character, false) end
 	if root and root:IsA("BasePart") then
-		root:SetNetworkOwner(nil)
+		root:SetNetworkOwner(holder)
 	end
 	holder = nil
 	prompt.Enabled = true

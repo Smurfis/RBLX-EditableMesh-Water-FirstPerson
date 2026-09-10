@@ -55,7 +55,7 @@ local function getRoot(instance: Instance): (BasePart?, Model?)
 	end
 
 	if instance:IsA("Model") then
-		local primaryPart = instance.PrimaryPart
+		local primaryPart = instance.PrimaryPart or instance:FindFirstChild("HumanoidRootPart")
 		if not primaryPart then
 			if not warnedMissingPrimary[instance] then
 				warnedMissingPrimary[instance] = true
