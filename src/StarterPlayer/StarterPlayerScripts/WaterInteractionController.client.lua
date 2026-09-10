@@ -36,9 +36,12 @@ type InteractableState = {
 	root: BasePart,
 	model: Model?,
 	currentY: number,
+	originPosition: Vector3,
 	yaw: number,
+	baseRotation: CFrame,
 	currentRotation: CFrame,
 	targetY: number,
+	targetPosition: Vector3,
 	targetRotation: CFrame,
 	updateTimer: number,
 }
@@ -85,9 +88,12 @@ local function addInteractable(instance: Instance)
 		root = root,
 		model = model,
 		currentY = root.Position.Y,
+		originPosition = root.Position,
 		yaw = select(2, root.CFrame:ToOrientation()),
+		baseRotation = root.CFrame.Rotation,
 		currentRotation = root.CFrame.Rotation,
 		targetY = root.Position.Y,
+		targetPosition = root.Position,
 		targetRotation = root.CFrame.Rotation,
 		updateTimer = 0,
 	}
@@ -180,6 +186,7 @@ local function sampleObject(state: InteractableState, profile)
 	local time = WaterWaveSampler.GetTime()
 	local totalHeight = 0
 	local totalNormal = Vector3.zero
+	local totalDisplacement = Vector3.zero
 	local frontHeight = 0
 	local rearHeight = 0
 	local leftHeight = 0
@@ -200,6 +207,7 @@ local function sampleObject(state: InteractableState, profile)
 		)
 		totalHeight += sample.Height
 		totalNormal += sample.Normal
+		totalDisplacement += sample.Displacement
 
 		if localOffset.Z < -0.01 then
 			frontHeight += sample.Height
@@ -234,15 +242,15 @@ local function sampleObject(state: InteractableState, profile)
 		).Unit
 	end
 
-	return averageHeight, sampleFrame:VectorToWorldSpace(normal)
+	return averageHeight, sampleFrame:VectorToWorldSpace(normal), totalDisplacement / #offsets
 end
 
-local function movePose(state: InteractableState, targetY: number, rotation: CFrame)
+local function movePose(state: InteractableState, targetPosition: Vector3, rotation: CFrame)
 	local root = state.root
 	local targetCFrame = CFrame.new(
-		root.Position.X,
-		targetY,
-		root.Position.Z
+		targetPosition.X,
+		targetPosition.Y,
+		targetPosition.Z
 	) * rotation
 
 	if state.model then
@@ -282,18 +290,31 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 			0,
 			getNumberAttribute(instance, "WaterBuoyancyStrength", 1)
 		)
-		local height, normal = sampleObject(state, profile)
+		local height, normal, displacement = sampleObject(state, profile)
 		state.targetY = WaterConfig.GetSurfaceY() + height * strength + offset
+		if instance:GetAttribute("WaterAllowHorizontalDrift") == true then
+			state.targetPosition = state.originPosition + displacement
+		else
+			state.targetPosition = Vector3.new(
+				state.root.Position.X,
+				0,
+				state.root.Position.Z
+			)
+		end
 
 		local rotationStrength = math.max(
 			0,
 			getNumberAttribute(instance, "WaterRotationStrength", 1)
 		)
-		local yawFrame = CFrame.Angles(0, state.yaw, 0)
-		local localNormal = yawFrame:VectorToObjectSpace(normal)
-		local pitch = -math.atan2(localNormal.Z, localNormal.Y) * rotationStrength
-		local roll = math.atan2(localNormal.X, localNormal.Y) * rotationStrength
-		state.targetRotation = yawFrame * CFrame.Angles(pitch, 0, roll)
+		if rotationStrength <= 0 then
+			state.targetRotation = state.baseRotation
+		else
+			local yawFrame = CFrame.Angles(0, state.yaw, 0)
+			local localNormal = yawFrame:VectorToObjectSpace(normal)
+			local pitch = -math.atan2(localNormal.Z, localNormal.Y) * rotationStrength
+			local roll = math.atan2(localNormal.X, localNormal.Y) * rotationStrength
+			state.targetRotation = yawFrame * CFrame.Angles(pitch, 0, roll)
+		end
 		state.updateTimer = 1 / profile.UpdateHz
 	end
 
@@ -302,7 +323,15 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 	local rotationAlpha = 1 - math.exp(-ROTATION_RESPONSE * dt)
 	state.currentRotation = state.currentRotation:Lerp(state.targetRotation, rotationAlpha)
 
-	movePose(state, state.currentY, state.currentRotation)
+	movePose(
+		state,
+		Vector3.new(
+			state.targetPosition.X,
+			state.currentY,
+			state.targetPosition.Z
+		),
+		state.currentRotation
+	)
 end
 
 RunService:BindToRenderStep(
