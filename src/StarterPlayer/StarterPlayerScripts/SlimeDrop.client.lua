@@ -36,7 +36,8 @@ if slime and slime:IsA("Model") then
 		trail.Name = "SlimeFallTrail"
 		trail.Attachment0 = top
 		trail.Attachment1 = bottom
-		trail.Color = ColorSequence.new(Color3.fromRGB(255, 212, 138))
+		trail.Texture = "rbxassetid://138569364097517"
+		trail.Color = ColorSequence.new(Color3.fromRGB(138, 255, 138))
 		trail.Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0.2),
 			NumberSequenceKeypoint.new(1, 1),
