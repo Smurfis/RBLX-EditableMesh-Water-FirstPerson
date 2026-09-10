@@ -30,6 +30,7 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Shallow sound starts once per movement pass, with a delayed single exit ring/particle burst.
 - [x] Roblox running sounds are stopped while shallow-water footsteps are active and restored on exit.
 - [x] Shallow eligibility includes the calibrated foot-contact plane for near-surface ledges.
+- [x] Night-time underwater compensation keeps deep water readable during dark hours.
 - [x] Missing shallow-footstep assets fail soft with a warning and entry-sound fallback.
 - [x] Shallow-footstep detection accepts the near-surface floor band above the visible wave edge.
 - [x] Replicated splash rings emit size-appropriate centre particle bursts using the supplied rainsplash texture.

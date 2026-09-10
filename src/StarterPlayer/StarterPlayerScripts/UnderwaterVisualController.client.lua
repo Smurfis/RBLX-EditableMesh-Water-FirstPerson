@@ -20,6 +20,7 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
 
 
 --==============================================================
@@ -257,6 +258,16 @@ local function lerpNumber(
 ): number
 
 	return a + (b - a) * alpha
+end
+
+local function getNightFactor(): number
+	local clockTime = Lighting.ClockTime
+	if clockTime >= 18 then
+		return math.clamp((clockTime - 18) / 6, 0, 1)
+	elseif clockTime <= 6 then
+		return math.clamp((6 - clockTime) / 6, 0, 1)
+	end
+	return 0
 end
 
 
@@ -636,6 +647,7 @@ local function updateUnderwaterVisuals(
 
 	local darkness =
 		currentDepthAlpha ^ 1.35
+	local nightFactor = getNightFactor()
 
 
 	colorCorrection.TintColor =
@@ -648,7 +660,7 @@ local function updateUnderwaterVisuals(
 	colorCorrection.Brightness =
 		lerpNumber(
 			Settings.ShallowBrightness,
-			Settings.DeepBrightness,
+		Settings.DeepBrightness + Settings.NightBrightnessLift * nightFactor,
 			darkness
 		)
 
@@ -685,6 +697,7 @@ local function updateUnderwaterVisuals(
 			0,
 			1
 		) ^ 1.6
+	blackout *= 1 - Settings.NightBlackoutReduction * nightFactor
 
 
 	darknessFrame.BackgroundTransparency =

@@ -77,6 +77,9 @@ WaterConfig.Underwater = {
 	DeepContrast = 0.45,
 	DeepSaturation = -0.75,
 	DeepBlur = 10,
+	-- Prevent already-dark night lighting from making deep water unreadable.
+	NightBrightnessLift = 0.35,
+	NightBlackoutReduction = 0.45,
 }
 
 

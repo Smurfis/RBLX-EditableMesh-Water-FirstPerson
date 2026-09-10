@@ -239,6 +239,8 @@ When movement stops, the sound now pauses immediately at its current position in
 
 The pause state is tracked locally because Roblox `Sound` has no `PlaybackState` property; this removes the runtime error reported by Studio.
 
+Underwater visuals now compensate for night lighting. Between 18:00 and 06:00, deep-water brightness is lifted by up to 0.35 and the black overlay is reduced by up to 45%, preventing 24:00 underwater scenes from becoming unreadably black while preserving the daytime depth treatment.
+
 The shallow sound no longer restarts on every footstep tick, preventing rapid looping. A single delayed exit ring and particle burst is also emitted when the player leaves the pool, allowing a clean jump-out and re-entry effect without repeated triggers.
 
 While shallow water is active, captured Roblox `Running` sounds are now explicitly stopped as well as muted. This prevents the default footstep system from restarting or cutting across `ShallowFootsteps`; normal running sound volume is restored after leaving the water band.
