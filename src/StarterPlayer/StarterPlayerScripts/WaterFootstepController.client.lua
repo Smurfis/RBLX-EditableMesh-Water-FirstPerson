@@ -1,0 +1,190 @@
+--!strict
+
+-- Replaces Roblox's regular running sound while the character is wading at
+-- the water surface. The normal character sounds return as soon as the feet
+-- leave the water band.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local WaterConfig = require(
+	ReplicatedStorage
+		:WaitForChild("Modules")
+		:WaitForChild("WaterConfig")
+)
+
+local waterSounds = ReplicatedStorage
+	:WaitForChild("Shared")
+	:WaitForChild("Sounds")
+	:WaitForChild("Water")
+
+local splashTemplate = waterSounds:WaitForChild("WaterSplashEntry")
+assert(
+	splashTemplate:IsA("Sound"),
+	"ReplicatedStorage.Shared.Sounds.Water.WaterSplashEntry must be a Sound"
+)
+
+local player = Players.LocalPlayer
+
+local FOOT_WATER_DEPTH = 4
+local FOOT_WATER_MARGIN = 0.6
+local MIN_ROOT_HEIGHT_ABOVE_SURFACE = 0.8
+local MAX_ROOT_HEIGHT_ABOVE_SURFACE = 4.0
+local MIN_STEP_INTERVAL = 0.24
+local MAX_STEP_INTERVAL = 0.55
+local STEP_SPEED_SCALE = 0.018
+local STEP_VOLUME_SCALE = 0.55
+
+local character: Model? = nil
+local humanoid: Humanoid? = nil
+local rootPart: BasePart? = nil
+local waterFootstep: Sound? = nil
+local descendantConnection: RBXScriptConnection? = nil
+local savedRunningVolumes: { [Sound]: number } = {}
+local stepClock = 0
+
+local function isRunningSound(instance: Instance): boolean
+	return instance:IsA("Sound") and instance.Name == "Running"
+end
+
+local function muteRunningSound(instance: Instance)
+	if not isRunningSound(instance) then
+		return
+	end
+
+	local sound = instance :: Sound
+	if savedRunningVolumes[sound] == nil then
+		savedRunningVolumes[sound] = sound.Volume
+	end
+	sound.Volume = 0
+end
+
+local function restoreRunningSounds()
+	for sound, volume in savedRunningVolumes do
+		if sound.Parent then
+			sound.Volume = volume
+		end
+	end
+	table.clear(savedRunningVolumes)
+end
+
+local function destroyWaterFootstep()
+	if waterFootstep then
+		waterFootstep:Destroy()
+		waterFootstep = nil
+	end
+	restoreRunningSounds()
+	if descendantConnection then
+		descendantConnection:Disconnect()
+		descendantConnection = nil
+	end
+end
+
+local function setupCharacter(newCharacter: Model)
+	destroyWaterFootstep()
+	character = newCharacter
+	humanoid = newCharacter:WaitForChild("Humanoid") :: Humanoid
+	rootPart = newCharacter:WaitForChild("HumanoidRootPart") :: BasePart
+
+	local sound = splashTemplate:Clone()
+	sound.Name = "WaterFootstep_Local"
+	sound.Looped = false
+	sound.Volume *= STEP_VOLUME_SCALE
+	sound.Parent = rootPart
+	sound:Stop()
+	waterFootstep = sound
+
+	for _, descendant in newCharacter:GetDescendants() do
+		muteRunningSound(descendant)
+	end
+	descendantConnection = newCharacter.DescendantAdded:Connect(muteRunningSound)
+	stepClock = 0
+end
+
+local function getFootParts(currentCharacter: Model): { BasePart }
+	local parts = {}
+	for _, name in { "LeftFoot", "RightFoot", "Left Leg", "Right Leg" } do
+		local part = currentCharacter:FindFirstChild(name)
+		if part and part:IsA("BasePart") then
+			table.insert(parts, part)
+		end
+	end
+	return parts
+end
+
+local function feetTouchWater(currentCharacter: Model, currentRoot: BasePart): boolean
+	local surfaceY = WaterConfig.GetSurfaceY()
+	local rootHeight = currentRoot.Position.Y - surfaceY
+	if rootHeight < MIN_ROOT_HEIGHT_ABOVE_SURFACE
+		or rootHeight > MAX_ROOT_HEIGHT_ABOVE_SURFACE
+	then
+		return false
+	end
+
+	for _, foot in getFootParts(currentCharacter) do
+		local footY = foot.Position.Y
+		if footY <= surfaceY + FOOT_WATER_MARGIN
+			and footY >= surfaceY - FOOT_WATER_DEPTH
+		then
+			return true
+		end
+	end
+	return false
+end
+
+local function playWaterStep(speed: number)
+	local sound = waterFootstep
+	if not sound then
+		return
+	end
+
+	sound.PlaybackSpeed = math.clamp(0.9 + speed / 24, 0.9, 1.45)
+	sound.TimePosition = 0
+	sound:Play()
+end
+
+player.CharacterAdded:Connect(setupCharacter)
+if player.Character then
+	task.spawn(setupCharacter, player.Character)
+end
+
+RunService.Heartbeat:Connect(function(deltaTime)
+	local currentCharacter = character
+	local currentHumanoid = humanoid
+	local currentRoot = rootPart
+	if not currentCharacter or not currentHumanoid or not currentRoot then
+		return
+	end
+
+	local touchingWater = feetTouchWater(currentCharacter, currentRoot)
+	if not touchingWater then
+		restoreRunningSounds()
+		stepClock = 0
+		return
+	end
+
+	for sound in pairs(savedRunningVolumes) do
+		if sound.Parent then
+			sound.Volume = 0
+		end
+	end
+
+	local speed = currentRoot.AssemblyLinearVelocity.Magnitude
+	local moving = currentHumanoid.MoveDirection.Magnitude > 0.05
+	if not moving or currentHumanoid.FloorMaterial == Enum.Material.Air then
+		stepClock = 0
+		return
+	end
+
+	stepClock -= deltaTime
+	if stepClock <= 0 then
+		playWaterStep(speed)
+		stepClock = math.clamp(
+			MAX_STEP_INTERVAL - speed * STEP_SPEED_SCALE,
+			MIN_STEP_INTERVAL,
+			MAX_STEP_INTERVAL
+		)
+	end
+end)
+
