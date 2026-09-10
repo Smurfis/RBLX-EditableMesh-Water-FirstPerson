@@ -237,6 +237,8 @@ Shallow walking now uses the Studio-managed `ShallowFootsteps` sound. Its three-
 
 When movement stops, the sound now finishes its current one-, two- or three-second pass naturally instead of being abruptly stopped; it only loops again when shallow movement resumes.
 
+The shallow sound no longer restarts on every footstep tick, preventing rapid looping. A single delayed exit ring and particle burst is also emitted when the player leaves the pool, allowing a clean jump-out and re-entry effect without repeated triggers.
+
 While shallow water is active, captured Roblox `Running` sounds are now explicitly stopped as well as muted. This prevents the default footstep system from restarting or cutting across `ShallowFootsteps`; normal running sound volume is restored after leaving the water band.
 
 The shallow eligibility check now includes the calibrated foot-contact plane, rather than requiring the foot to be inside a lower animated-crest window. This keeps rings active on the Y=6.901 shoreline floor even when the local wave sample is lower, and the root-height allowance is raised to six studs for that near-surface ledge.

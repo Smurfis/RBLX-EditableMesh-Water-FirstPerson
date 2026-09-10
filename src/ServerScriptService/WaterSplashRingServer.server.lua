@@ -70,7 +70,7 @@ event.OnServerEvent:Connect(function(player, requestedPosition, ringKind)
 	if typeof(requestedPosition) ~= "Vector3" then
 		return
 	end
-	if ringKind ~= nil and ringKind ~= "Paddle" and ringKind ~= "Footstep" then
+	if ringKind ~= nil and ringKind ~= "Paddle" and ringKind ~= "Footstep" and ringKind ~= "Exit" then
 		return
 	end
 
@@ -99,7 +99,7 @@ event.OnServerEvent:Connect(function(player, requestedPosition, ringKind)
 
 	lastSplashAt[player] = now
 	local ring = template:Clone()
-	ring.Name = if ringKind == "Paddle" then "WaterPaddleRing" elseif ringKind == "Footstep" then "WaterFootstepRing" else "WaterSplashRing"
+	ring.Name = if ringKind == "Paddle" then "WaterPaddleRing" elseif ringKind == "Footstep" then "WaterFootstepRing" elseif ringKind == "Exit" then "WaterExitRing" else "WaterSplashRing"
 	ring.Anchored = true
 	ring.CanCollide = false
 	ring.CanTouch = false

@@ -21,12 +21,15 @@ local PADDLE_INTERVAL = 0.62
 local PADDLE_FORWARD_DISTANCE = 1.35
 local PADDLE_HEIGHT_OFFSET = 0.45
 local PADDLE_MIN_SPEED = 1.5
+local EXIT_RING_DELAY = 0.35
+local EXIT_REARM_HEIGHT = 0.5
 
 local root: BasePart? = nil
 local previousRootY: number? = nil
 local entryArmed = true
 local lastPaddleAt = -math.huge
 local paddleSide = 1
+local wasBelowEntry = false
 
 local function getHand(character: Model, side: string): BasePart?
 	local names = if side == "Left" then { "LeftHand", "Left Arm" } else { "RightHand", "Right Arm" }
@@ -54,6 +57,7 @@ local function bindCharacter(character: Model)
 	entryArmed = true
 	lastPaddleAt = -math.huge
 	paddleSide = 1
+	wasBelowEntry = false
 end
 
 player.CharacterAdded:Connect(bindCharacter)
@@ -76,6 +80,16 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	local threshold = surfaceY + ENTRY_HEIGHT
+	local nowBelowEntry = currentRootY <= threshold
+	if wasBelowEntry and not nowBelowEntry and currentRoot.AssemblyLinearVelocity.Y >= -1 then
+		task.delay(EXIT_RING_DELAY, function()
+			if root == currentRoot and currentRoot.Parent and currentRoot.Position.Y > threshold then
+				fireRing(currentRoot.Position, "Exit")
+				entryArmed = currentRoot.Position.Y > threshold + EXIT_REARM_HEIGHT
+			end
+		end)
+	end
+	wasBelowEntry = nowBelowEntry
 	if currentRootY > threshold + ENTRY_REARM_HEIGHT then
 		entryArmed = true
 	end

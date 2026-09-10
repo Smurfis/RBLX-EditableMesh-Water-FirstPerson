@@ -160,7 +160,10 @@ local function playWaterStep(speed: number, foot: BasePart?, ringSurfaceY: numbe
 	end
 
 	sound.PlaybackSpeed = math.clamp(0.9 + speed / 24, 0.9, 1.45)
-	sound:Play()
+	if not sound.IsPlaying then
+		sound.TimePosition = 0
+		sound:Play()
+	end
 	if foot and ringSurfaceY then
 		splashEvent:FireServer(
 			Vector3.new(foot.Position.X, ringSurfaceY + FOOT_RING_HEIGHT_OFFSET, foot.Position.Z),
@@ -186,7 +189,6 @@ RunService.Heartbeat:Connect(function(deltaTime)
 	if not touchingWater then
 		restoreRunningSounds()
 		stepClock = 0
-		shallowStopClock = 0
 		if waterFootstep then
 			waterFootstep:Stop()
 		end
