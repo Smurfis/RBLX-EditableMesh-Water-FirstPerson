@@ -171,6 +171,21 @@ createSlider("CameraSensitivitySlider", "Camera sensitivity", 0.5, function(valu
 	container:SetAttribute("CameraSensitivity", value)
 end)
 
+local function setWorkspaceTransparencyAttribute(folderName: string, attributeName: string, value: number)
+	local folder = workspace:FindFirstChild(folderName)
+	if folder then
+		folder:SetAttribute(attributeName, value)
+	end
+end
+
+createSlider("WaveFoamTransparencySlider", "Wave foam transparency", 0, function(value)
+	setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "WaveFoamTransparencyOverride", value)
+end)
+
+createSlider("CoastlineTransparencySlider", "Coastline transparency", 0.45, function(value)
+	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "TransparencyOverride", value)
+end)
+
 local statusGui = Instance.new("ScreenGui")
 statusGui.Name = "ProjectStatusGui"
 statusGui.ResetOnSpawn = false

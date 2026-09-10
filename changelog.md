@@ -213,6 +213,8 @@ The HUD uses cartoon styling, a centred server identifier and a separate respons
 
 Compact keybind HUD mode now keeps the key symbols visible (`[=]` and `[M]`) while removing only the descriptive words. Toggling compact mode also reveals both keybind icons so the first transition remains visually clear.
 
+Settings now includes independent `Wave foam transparency` and `Coastline transparency` sliders, initialized to the current visual defaults. The Coastline slider drives both parts inside `__ClientCoastlineEffect` together, preserving their shared fade and movement while allowing the foam and coastline systems to be tuned separately.
+
 The developer water-tuning panel introduced in `4e6f7c3` was reverted in `6e0ef29` at the user's request. Only removal of the Player Reflections option was retained; developer sliders and their renderer changes are not part of the final state.
 
 ### Replicated Water-Contact Splash Rings

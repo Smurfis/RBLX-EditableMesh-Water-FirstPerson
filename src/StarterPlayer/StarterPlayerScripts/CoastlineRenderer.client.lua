@@ -648,17 +648,24 @@ local function updateSubmersionFade(
 			target - fadeAlpha
 		)
 		* alpha
+	local transparencyOverride = effectFolder:GetAttribute("TransparencyOverride")
+	local visibleWaterTransparency = if typeof(transparencyOverride) == "number"
+		then math.clamp(transparencyOverride, 0, 1)
+		else waterPartVisibleTransparency
+	local visibleCoastlineTransparency = if typeof(transparencyOverride) == "number"
+		then math.clamp(transparencyOverride, 0, 1)
+		else coastlineVisibleTransparency
 
 	waterPart.Transparency =
 		lerpNumber(
-			waterPartVisibleTransparency,
+			visibleWaterTransparency,
 			1,
 			fadeAlpha
 		)
 
 	coastline.Transparency =
 		lerpNumber(
-			coastlineVisibleTransparency,
+			visibleCoastlineTransparency,
 			1,
 			fadeAlpha
 		)

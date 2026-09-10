@@ -907,6 +907,19 @@ if HIDE_GENERATED_WAVELINES then
 	waveLinesMesh.Transparency = 1
 end
 
+local function updateWaveFoamTransparency()
+	if HIDE_GENERATED_WAVELINES then
+		waveLinesMesh.Transparency = 1
+		return
+	end
+	local override = waterFolder:GetAttribute("WaveFoamTransparencyOverride")
+	waveLinesMesh.Transparency = if typeof(override) == "number"
+		then math.clamp(override, 0, 1)
+		else WATER_COASTLINE_TRANSPARENCY
+end
+waterFolder:GetAttributeChangedSignal("WaveFoamTransparencyOverride"):Connect(updateWaveFoamTransparency)
+updateWaveFoamTransparency()
+
 -- Clone the preconfigured SurfaceAppearance ONLY onto the white upper
 -- layer. We intentionally do NOT assign ColorMap from this LocalScript
 -- because Roblox restricts that property at runtime.
