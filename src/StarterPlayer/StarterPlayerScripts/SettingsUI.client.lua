@@ -34,11 +34,6 @@ local panelCorner = Instance.new("UICorner")
 panelCorner.CornerRadius = UDim.new(0, 8)
 panelCorner.Parent = container
 
-local panelStroke = Instance.new("UIStroke")
-panelStroke.Color = Color3.fromRGB(120, 180, 220)
-panelStroke.Transparency = 0.35
-panelStroke.Parent = container
-
 local title = Instance.new("TextLabel")
 title.Name = "Title"
 title.Position = UDim2.fromOffset(16, 10)
@@ -208,8 +203,8 @@ local function createKeybindRow(
 	local row = Instance.new("Frame")
 	row.Name = name
 	row.AnchorPoint = Vector2.new(1, 1)
-	row.Position = UDim2.new(1, -18, 1, yOffset)
-	row.Size = UDim2.fromOffset(270, 28)
+	row.Position = UDim2.fromScale(0.98, if yOffset < -50 then 0.88 else 0.94)
+	row.Size = UDim2.fromScale(0.22, 0.04)
 	row.BackgroundTransparency = 1
 	row.Parent = statusGui
 
@@ -229,8 +224,7 @@ local function createKeybindRow(
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.TextStrokeTransparency = 0.2
+	label.TextStrokeTransparency = 1
 	label.Font = Enum.Font.Cartoon
 	label.TextSize = 18
 	label.TextXAlignment = Enum.TextXAlignment.Right
@@ -240,18 +234,18 @@ local function createKeybindRow(
 	return row
 end
 
-createKeybindRow(
+local settingsRow = createKeybindRow(
 	"SettingsKeybind",
 	"rbxassetid://97812683336887",
 	"SETTINGS: KEYBIND",
-	-70
+	-42
 )
 
 local freeMouseRow = createKeybindRow(
 	"MouseLockKeybind",
 	"rbxassetid://77904780414059",
 	"Free Mouse: M",
-	-42
+	-70
 )
 
 local reticle = Instance.new("Frame")
@@ -268,53 +262,44 @@ local reticleCorner = Instance.new("UICorner")
 reticleCorner.CornerRadius = UDim.new(1, 0)
 reticleCorner.Parent = reticle
 
-local reticleStroke = Instance.new("UIStroke")
-reticleStroke.Color = Color3.fromRGB(0, 0, 0)
-reticleStroke.Transparency = 0.25
-reticleStroke.Thickness = 1
-reticleStroke.Parent = reticle
-
 local serverLabel = Instance.new("TextLabel")
 serverLabel.Name = "ServerStatus"
 serverLabel.AnchorPoint = Vector2.new(0.5, 0)
-serverLabel.Position = UDim2.new(0.5, 0, 0, 18)
-serverLabel.Size = UDim2.fromOffset(620, 24)
+serverLabel.Position = UDim2.fromScale(0.5, 0.035)
+serverLabel.Size = UDim2.fromScale(0.32, 0.035)
 serverLabel.BackgroundTransparency = 1
 serverLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-serverLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-serverLabel.TextStrokeTransparency = 0.35
-serverLabel.Font = Enum.Font.Gotham
-serverLabel.TextSize = 14
+serverLabel.TextStrokeTransparency = 1
+serverLabel.Font = Enum.Font.Cartoon
+serverLabel.TextSize = 18
 serverLabel.TextXAlignment = Enum.TextXAlignment.Center
 serverLabel.TextYAlignment = Enum.TextYAlignment.Center
 serverLabel.Parent = statusGui
 
 local fpsLabel = Instance.new("TextLabel")
 fpsLabel.Name = "FPSStatus"
-fpsLabel.AnchorPoint = Vector2.new(0.5, 0)
-fpsLabel.Position = UDim2.new(0.5, 0, 0, 42)
-fpsLabel.Size = UDim2.fromOffset(220, 22)
+fpsLabel.AnchorPoint = Vector2.new(0, 0)
+fpsLabel.Position = UDim2.fromScale(0.02, 0.095)
+fpsLabel.Size = UDim2.fromScale(0.16, 0.03)
 fpsLabel.BackgroundTransparency = 1
 fpsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-fpsLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-fpsLabel.TextStrokeTransparency = 0.35
-fpsLabel.Font = Enum.Font.Gotham
-fpsLabel.TextSize = 14
-fpsLabel.TextXAlignment = Enum.TextXAlignment.Center
+fpsLabel.TextStrokeTransparency = 1
+fpsLabel.Font = Enum.Font.Cartoon
+fpsLabel.TextSize = 16
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
 fpsLabel.TextYAlignment = Enum.TextYAlignment.Center
 fpsLabel.Parent = statusGui
 
 local versionLabel = Instance.new("TextLabel")
 versionLabel.Name = "WaterVersionStatus"
 versionLabel.AnchorPoint = Vector2.new(1, 0)
-versionLabel.Position = UDim2.new(1, -18, 0, 18)
-versionLabel.Size = UDim2.fromOffset(72, 24)
+versionLabel.Position = UDim2.fromScale(0.98, 0.035)
+versionLabel.Size = UDim2.fromScale(0.06, 0.035)
 versionLabel.BackgroundTransparency = 1
 versionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-versionLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-versionLabel.TextStrokeTransparency = 0.35
-versionLabel.Font = Enum.Font.Gotham
-versionLabel.TextSize = 14
+versionLabel.TextStrokeTransparency = 1
+versionLabel.Font = Enum.Font.Cartoon
+versionLabel.TextSize = 16
 versionLabel.TextXAlignment = Enum.TextXAlignment.Left
 versionLabel.TextYAlignment = Enum.TextYAlignment.Center
 versionLabel.Parent = statusGui
@@ -322,14 +307,13 @@ versionLabel.Parent = statusGui
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "ProjectStatus"
 statusLabel.AnchorPoint = Vector2.new(1, 0)
-statusLabel.Position = UDim2.new(1, -102, 0, 18)
-statusLabel.Size = UDim2.fromOffset(420, 24)
+statusLabel.Position = UDim2.fromScale(0.91, 0.035)
+statusLabel.Size = UDim2.fromScale(0.27, 0.035)
 statusLabel.BackgroundTransparency = 1
 statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-statusLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-statusLabel.TextStrokeTransparency = 0.35
-statusLabel.Font = Enum.Font.Gotham
-statusLabel.TextSize = 14
+statusLabel.TextStrokeTransparency = 1
+statusLabel.Font = Enum.Font.Cartoon
+statusLabel.TextSize = 16
 statusLabel.TextXAlignment = Enum.TextXAlignment.Right
 statusLabel.TextYAlignment = Enum.TextYAlignment.Center
 statusLabel.RichText = false
@@ -340,7 +324,6 @@ local mouseReleased = false
 local settingsOpen = false
 
 local function updateMouseUi()
-	freeMouseRow.Visible = mouseReleased
 	reticle.Visible = not mouseReleased
 end
 
@@ -416,7 +399,7 @@ RunService.RenderStepped:Connect(function(deltaTime)
 	end
 
 	statusLabel.Text = "RBLX EditableMesh Water First Person"
-	serverLabel.Text = string.format("[server: %s]", serverId)
+	serverLabel.Text = string.format("server: %s", serverId)
 	versionLabel.Text = "v4.x.x"
-	fpsLabel.Text = string.format("[fps: %d]", math.floor(fps + 0.5))
+	fpsLabel.Text = string.format("fps: %d", math.floor(fps + 0.5))
 end)
