@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -63,34 +64,19 @@ listLayout.Padding = UDim.new(0, 10)
 listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 listLayout.Parent = scroll
 
-local reflections = Checkbox.new(
-	scroll,
-	"Player Reflections",
-	true,
-	function(enabled)
-		print("Player Reflections:", enabled)
-
-		if enabled then
-			-- Enable reflections
-		else
-			-- Disable reflections
-		end
-	end
-)
-reflections.Frame.LayoutOrder = 1
-
 local function createSlider(
 	name: string,
 	labelText: string,
 	defaultValue: number,
-	callback: (number) -> ()
+	callback: (number) -> (),
+	parent: ScrollingFrame?
 ): Frame
 	local frame = Instance.new("Frame")
 	frame.Name = name
 	frame.Size = UDim2.new(1, -8, 0, 48)
 	frame.BackgroundTransparency = 1
 	frame.LayoutOrder = 2
-	frame.Parent = scroll
+	frame.Parent = parent or scroll
 
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(1, 0, 0, 20)
@@ -181,11 +167,11 @@ end
 
 createSlider("WaterOpacitySlider", "Water opacity", 0.75, function(value)
 	container:SetAttribute("WaterOpacity", value)
-end)
+end, nil)
 
 createSlider("CameraSensitivitySlider", "Camera sensitivity", 0.5, function(value)
 	container:SetAttribute("CameraSensitivity", value)
-end)
+end, nil)
 
 local statusGui = Instance.new("ScreenGui")
 statusGui.Name = "ProjectStatusGui"
@@ -346,6 +332,123 @@ statusLabel.TextYAlignment = Enum.TextYAlignment.Center
 statusLabel.RichText = false
 statusLabel.Parent = statusGui
 
+local developerContainer: Frame? = nil
+local developerOpen = false
+
+local function setDeveloperTransparency(
+	instanceName: string,
+	value: number
+)
+	local coastlineFolder = Workspace:FindFirstChild("__ClientCoastlineEffect")
+	local waterFolder = Workspace:FindFirstChild("__ClientRealisticWaterV4")
+	local instance = if instanceName == "WaveFoamVFX"
+		then waterFolder and waterFolder:FindFirstChild(instanceName)
+		else coastlineFolder and coastlineFolder:FindFirstChild(instanceName)
+
+	if instance and instance:IsA("BasePart") then
+		instance:SetAttribute("DeveloperTransparency", value)
+		instance.Transparency = value
+	end
+end
+
+local function setDeveloperVisibility(
+	instanceName: string,
+	visible: boolean
+)
+	local coastlineFolder = Workspace:FindFirstChild("__ClientCoastlineEffect")
+	local waterFolder = Workspace:FindFirstChild("__ClientRealisticWaterV4")
+	local instance = if instanceName == "WaveFoamVFX"
+		then waterFolder and waterFolder:FindFirstChild(instanceName)
+		else coastlineFolder and coastlineFolder:FindFirstChild(instanceName)
+
+	if instance and instance:IsA("BasePart") then
+		instance:SetAttribute("DeveloperHidden", not visible)
+		instance.LocalTransparencyModifier = if visible then 0 else 1
+	end
+end
+
+if player.UserId == 3791340 then
+	local devGui = Instance.new("ScreenGui")
+	devGui.Name = "DeveloperToolsGui"
+	devGui.ResetOnSpawn = false
+	devGui.IgnoreGuiInset = true
+	devGui.DisplayOrder = 21
+	devGui.Parent = playerGui
+
+	local panel = Instance.new("Frame")
+	panel.Name = "DeveloperTools"
+	panel.AnchorPoint = Vector2.new(0, 0.5)
+	panel.Position = UDim2.fromScale(0.72, 0.5)
+	panel.Size = UDim2.fromScale(0.22, 0.62)
+	panel.BackgroundColor3 = Color3.fromRGB(24, 28, 38)
+	panel.BackgroundTransparency = 0.08
+	panel.BorderSizePixel = 0
+	panel.Visible = false
+	panel.Parent = devGui
+	developerContainer = panel
+
+	local devTitle = Instance.new("TextLabel")
+	devTitle.Size = UDim2.new(1, -24, 0, 32)
+	devTitle.Position = UDim2.fromOffset(12, 10)
+	devTitle.BackgroundTransparency = 1
+	devTitle.Text = "DEV TOOLS  [P]"
+	devTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	devTitle.Font = Enum.Font.Cartoon
+	devTitle.TextSize = 20
+	devTitle.TextXAlignment = Enum.TextXAlignment.Left
+	devTitle.Parent = panel
+
+	local devScroll = Instance.new("ScrollingFrame")
+	devScroll.Name = "DeveloperSettingsList"
+	devScroll.Position = UDim2.fromScale(0.04, 0.12)
+	devScroll.Size = UDim2.fromScale(0.92, 0.84)
+	devScroll.BackgroundTransparency = 1
+	devScroll.BorderSizePixel = 0
+	devScroll.ScrollBarThickness = 5
+	devScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	devScroll.Parent = panel
+
+	local devLayout = Instance.new("UIListLayout")
+	devLayout.Padding = UDim.new(0, 8)
+	devLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	devLayout.Parent = devScroll
+
+	local coastlineVisibility = Checkbox.new(devScroll, "CoastLine visibility", true, function(value)
+		setDeveloperVisibility("CoastLine", value)
+	end)
+	coastlineVisibility.Frame.LayoutOrder = 1
+	local waterPartVisibility = Checkbox.new(devScroll, "WaterPart visibility", true, function(value)
+		setDeveloperVisibility("WaterPart", value)
+	end)
+	waterPartVisibility.Frame.LayoutOrder = 2
+	local foamVisibility = Checkbox.new(devScroll, "WaveFoamVFX visibility", true, function(value)
+		setDeveloperVisibility("WaveFoamVFX", value)
+	end)
+	foamVisibility.Frame.LayoutOrder = 3
+
+	createSlider("CoastLine transparency", "CoastLine transparency", 0, function(value)
+		setDeveloperTransparency("CoastLine", value)
+	end, devScroll).LayoutOrder = 4
+	createSlider("WaterPart transparency", "WaterPart transparency", 0, function(value)
+		setDeveloperTransparency("WaterPart", value)
+	end, devScroll).LayoutOrder = 5
+	createSlider("WaveFoamVFX transparency", "WaveFoamVFX transparency", 0, function(value)
+		setDeveloperTransparency("WaveFoamVFX", value)
+	end, devScroll).LayoutOrder = 6
+	createSlider("Vertical wave strength", "Vertical wave strength", 0.5, function(value)
+		local waterFolder = Workspace:FindFirstChild("__ClientRealisticWaterV4")
+		if waterFolder then
+			waterFolder:SetAttribute("DeveloperVerticalWaveStrength", value * 2)
+		end
+	end, devScroll).LayoutOrder = 7
+	createSlider("Horizontal wave strength", "Horizontal wave strength", 0.5, function(value)
+		local waterFolder = Workspace:FindFirstChild("__ClientRealisticWaterV4")
+		if waterFolder then
+			waterFolder:SetAttribute("DeveloperHorizontalWaveStrength", value * 2)
+		end
+	end, devScroll).LayoutOrder = 8
+end
+
 local SETTINGS_TOGGLE_KEY = Enum.KeyCode.Equals
 local mouseReleased = false
 local settingsOpen = false
@@ -431,6 +534,14 @@ end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then
+		return
+	end
+
+	if player.UserId == 3791340 and input.KeyCode == Enum.KeyCode.P then
+		developerOpen = not developerOpen
+		if developerContainer then
+			developerContainer.Visible = developerOpen
+		end
 		return
 	end
 

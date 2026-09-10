@@ -588,6 +588,17 @@ local coastlineVisibleTransparency =
 	+ (1 - coastlineBaseTransparency)
 	* (1 - EFFECT_OPACITY_MULTIPLIER)
 
+local function getDeveloperTransparency(
+	part: BasePart,
+	fallback: number
+): number
+	local override = part:GetAttribute("DeveloperTransparency")
+	if typeof(override) == "number" then
+		return math.clamp(override, 0, 1)
+	end
+	return fallback
+end
+
 local fadeAlpha = 0 -- 0 = fully visible, 1 = fully hidden
 
 local function lerpNumber(
@@ -649,16 +660,21 @@ local function updateSubmersionFade(
 		)
 		* alpha
 
+	local waterPartTargetTransparency =
+		getDeveloperTransparency(waterPart, waterPartVisibleTransparency)
+	local coastlineTargetTransparency =
+		getDeveloperTransparency(coastline, coastlineVisibleTransparency)
+
 	waterPart.Transparency =
 		lerpNumber(
-			waterPartVisibleTransparency,
+			waterPartTargetTransparency,
 			1,
 			fadeAlpha
 		)
 
 	coastline.Transparency =
 		lerpNumber(
-			coastlineVisibleTransparency,
+			coastlineTargetTransparency,
 			1,
 			fadeAlpha
 		)
