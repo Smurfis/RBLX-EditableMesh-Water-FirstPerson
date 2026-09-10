@@ -908,7 +908,7 @@ if HIDE_GENERATED_WAVELINES then
 end
 
 local function updateWaveFoamTransparency()
-	if HIDE_GENERATED_WAVELINES or waterFolder:GetAttribute("TransparentOcean") == true then
+	if HIDE_GENERATED_WAVELINES then
 		waveLinesMesh.Transparency = 1
 		return
 	end
@@ -919,21 +919,7 @@ local function updateWaveFoamTransparency()
 end
 waterFolder:GetAttributeChangedSignal("WaveFoamTransparencyOverride"):Connect(updateWaveFoamTransparency)
 
-local function updateTransparentOcean()
-	local transparent = waterFolder:GetAttribute("TransparentOcean") == true
-	waterBaseMesh.Transparency = if transparent then 1 else WATER_BASE_TRANSPARENCY
-	waterMiddleMesh.Transparency = if transparent then 1 else WATER_MIDDLE_TRANSPARENCY
-	waterMesh.Transparency = if transparent then 1 else WATER_SURFACE_TRANSPARENCY
-	for _, child in waterFolder:GetChildren() do
-		if child:IsA("BasePart") and string.sub(child.Name, 1, 8) == "FarWater" then
-			child.Transparency = if transparent then 1 else FAR_WATER_TRANSPARENCY
-		end
-	end
-	updateWaveFoamTransparency()
-end
-waterFolder:GetAttributeChangedSignal("TransparentOcean"):Connect(updateTransparentOcean)
 updateWaveFoamTransparency()
-updateTransparentOcean()
 
 -- Clone the preconfigured SurfaceAppearance ONLY onto the white upper
 -- layer. We intentionally do NOT assign ColorMap from this LocalScript
@@ -1043,9 +1029,7 @@ local function createFarTile(
 		midColor
 
 	tile.Transparency =
-		if waterFolder:GetAttribute("TransparentOcean") == true
-			then 1
-			else FAR_WATER_TRANSPARENCY
+		FAR_WATER_TRANSPARENCY
 
 	tile.Parent =
 		waterFolder

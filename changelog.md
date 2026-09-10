@@ -217,6 +217,8 @@ Settings now includes independent `Wave foam transparency` and `Coastline transp
 
 Settings also includes `Remove CoastLine Effect` and `Transparent Ocean` toggles. Both toggles can detach the two client Coastline VFX parts for a performance-friendly transparent-water view and restore them later; the ocean layers themselves remain available for separate transparency tuning.
 
+The underlying ocean color layers remain coupled to the foam appearance; `Transparent Ocean` therefore only detaches the Coastline VFX folder and does not hide individual water passes.
+
 The Coastline visibility control is inverted for clarity: slider value `1` keeps the effect at its minimum 45% transparency, and the effect can only become more transparent from there. `CALM OCEAN` is stored as the calm preset within the `WIND WAKER` visual family.
 
 The developer water-tuning panel introduced in `4e6f7c3` was reverted in `6e0ef29` at the user's request. Only removal of the Player Reflections option was retained; developer sliders and their renderer changes are not part of the final state.
