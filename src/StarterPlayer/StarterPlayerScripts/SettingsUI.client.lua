@@ -357,7 +357,7 @@ local function updateMouseUi()
 		settingsIcon.Visible = not settingsOpen
 	end
 	if mouseIcon and mouseIcon:IsA("ImageLabel") then
-		mouseIcon.Visible = mouseReleased
+		mouseIcon.Visible = not mouseReleased
 	end
 	reticle.Visible = not mouseReleased
 end
