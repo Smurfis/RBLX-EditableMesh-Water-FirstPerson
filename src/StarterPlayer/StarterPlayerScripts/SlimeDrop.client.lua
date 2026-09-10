@@ -62,7 +62,8 @@ if slime and slime:IsA("Model") then
 end
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed or input.KeyCode ~= Enum.KeyCode.G then return end
+	if gameProcessed or (input.KeyCode ~= Enum.KeyCode.G and input.KeyCode ~= Enum.KeyCode.E) then return end
+	if input.KeyCode == Enum.KeyCode.E and (not slime or slime:GetAttribute("SlimeHolderUserId") ~= player.UserId) then return end
 	for _, descendant in workspace:GetDescendants() do
 		if descendant:IsA("RemoteEvent") and descendant.Name == "DropEvent" then
 			descendant:FireServer()

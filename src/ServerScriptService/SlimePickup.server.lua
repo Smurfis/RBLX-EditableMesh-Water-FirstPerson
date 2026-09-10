@@ -62,6 +62,7 @@ local function dropItem()
 		root:SetNetworkOwner(holder)
 	end
 	holder = nil
+	item:SetAttribute("SlimeHolderUserId", nil)
 	prompt.Enabled = true
 end
 
@@ -85,6 +86,7 @@ prompt.Triggered:Connect(function(player)
 	if not hrp or not humanoid or not hrp:IsA("BasePart") then return end
 
 	holder = player
+	item:SetAttribute("SlimeHolderUserId", player.UserId)
 	prompt.Enabled = true
 	for _, descendant in item:GetDescendants() do
 		if descendant:IsA("BasePart") then
@@ -114,6 +116,7 @@ prompt.Triggered:Connect(function(player)
 	alignOri.Attachment1 = holdAttachment
 	alignOri.MaxTorque = 50000
 	alignOri.Responsiveness = 15
+	alignOri.ReactionTorqueEnabled = false
 	alignOri.Mode = Enum.OrientationAlignmentMode.TwoAttachment
 	alignOri.Parent = root
 	deathConnection = humanoid.Died:Connect(dropItem)
