@@ -20,7 +20,7 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Settings includes independent wave-foam and Coastline transparency controls.
 - [x] Settings includes CoastLine removal and Transparent Ocean toggles.
 - [x] Added named CALM OCEAN and WIND WAKER visual mode presets.
-- [x] Added reversible Disable Fancy Ocean toggle that hides ocean and Coastline VFX together.
+- [x] Added reversible Disable Fancy Ocean toggle that leaves Coastline VFX visible.
 - [x] Remove Player Reflections; revert experimental developer tools (`6e0ef29`).
 - [x] Replicated water-entry splash rings using the Studio `SplashRing` template (`0ca845a`).
 - [x] Separate one-shot entry rings from throttled hand-proximity paddle rings while surface holding.

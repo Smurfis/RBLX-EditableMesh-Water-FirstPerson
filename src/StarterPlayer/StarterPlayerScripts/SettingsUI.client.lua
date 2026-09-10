@@ -196,7 +196,6 @@ end)
 
 createToggle("DisableFancyOceanToggle", "Disable Fancy Ocean", false, function(disabled)
 	setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "FancyOceanDisabled", disabled)
-	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "Enabled", not disabled)
 end)
 
 local transparentWaterSliders: { Frame } = {}
