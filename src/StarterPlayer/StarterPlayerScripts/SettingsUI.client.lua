@@ -235,14 +235,24 @@ local freeMouseRow = createKeybindRow(
 
 local settingsLabel = settingsRow:FindFirstChild("Label")
 local mouseLabel = freeMouseRow:FindFirstChild("Label")
+local settingsIcon = settingsRow:FindFirstChild("Icon")
+local mouseIcon = freeMouseRow:FindFirstChild("Icon")
+local SETTINGS_FULL_TEXT = "SETTINGS: [=]"
+local MOUSE_FULL_TEXT = "Free Mouse: [M]"
 
 local compactKeybinds = false
 local function applyCompactKeybinds()
 	if settingsLabel and settingsLabel:IsA("TextLabel") then
-		settingsLabel.Visible = not compactKeybinds
+		settingsLabel.Visible = true
+		settingsLabel.Text = if compactKeybinds then "[=]" else SETTINGS_FULL_TEXT
 	end
 	if mouseLabel and mouseLabel:IsA("TextLabel") then
-		mouseLabel.Visible = not compactKeybinds
+		mouseLabel.Visible = true
+		mouseLabel.Text = if compactKeybinds then "[M]" else MOUSE_FULL_TEXT
+	end
+	if compactKeybinds then
+		if settingsIcon and settingsIcon:IsA("ImageLabel") then settingsIcon.Visible = true end
+		if mouseIcon and mouseIcon:IsA("ImageLabel") then mouseIcon.Visible = true end
 	end
 end
 
@@ -256,8 +266,6 @@ local compactSetting = Checkbox.new(
 	end
 )
 compactSetting.Frame.LayoutOrder = 4
-local settingsIcon = settingsRow:FindFirstChild("Icon")
-local mouseIcon = freeMouseRow:FindFirstChild("Icon")
 
 local reticle = Instance.new("Frame")
 reticle.Name = "FirstPersonReticle"

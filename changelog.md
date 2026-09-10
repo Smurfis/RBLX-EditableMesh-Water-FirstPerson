@@ -211,6 +211,8 @@ The settings/HUD work from `97bbb9f` through `3f2fdca` added the `ReplicatedStor
 
 The HUD uses cartoon styling, a centred server identifier and a separate responsive top-right title/version/FPS group. FPS is capitalised and appears beside the version. Mouse initialisation and icon state were corrected: the icon is visible while locked, hidden while released, and a small centre reticle indicates first-person lock.
 
+Compact keybind HUD mode now keeps the key symbols visible (`[=]` and `[M]`) while removing only the descriptive words. Toggling compact mode also reveals both keybind icons so the first transition remains visually clear.
+
 The developer water-tuning panel introduced in `4e6f7c3` was reverted in `6e0ef29` at the user's request. Only removal of the Player Reflections option was retained; developer sliders and their renderer changes are not part of the final state.
 
 ### Replicated Water-Contact Splash Rings
