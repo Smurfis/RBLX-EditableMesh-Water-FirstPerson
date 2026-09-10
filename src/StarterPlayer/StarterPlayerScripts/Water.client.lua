@@ -232,6 +232,11 @@ local WATER_SURFACE_TRANSPARENCY = 0.30
 local WATER_COASTLINE_COLOR = Color3.fromRGB(236, 235, 226)
 local WATER_COASTLINE_TRANSPARENCY = 0.15
 
+-- Temporary isolation switch while diagnosing the camera-angle visual bug.
+-- Keep the generated CoastLine instance in the folder so this test can be
+-- reversed without rebuilding the renderer's layer structure.
+local HIDE_GENERATED_COASTLINE = true
+
 local deepColor =
 	Color3.fromRGB(
 		0,
@@ -1064,6 +1069,10 @@ local coastLineMesh =
 		WATER_COASTLINE_COLOR,
 		WATER_COASTLINE_TRANSPARENCY
 	)
+
+if HIDE_GENERATED_COASTLINE then
+	coastLineMesh.Transparency = 1
+end
 
 -- Clone the preconfigured SurfaceAppearance ONLY onto the white upper
 -- layer. We intentionally do NOT assign ColorMap from this LocalScript
