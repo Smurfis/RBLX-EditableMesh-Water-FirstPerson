@@ -6,5 +6,6 @@
 return {
 	Root = nil :: BasePart?,
 	SurfaceHold = false,
+	PlatformRiding = false,
 	Offset = 0,
 }

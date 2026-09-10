@@ -7,7 +7,11 @@
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local playerWaveState = require(
+	ReplicatedStorage:WaitForChild("Modules"):WaitForChild("PlayerWaveMotionState")
+)
 
 local TAG_NAME = "WaterInteractable"
 local RENDER_PRIORITY = Enum.RenderPriority.Camera.Value + 3
@@ -24,6 +28,7 @@ local previousPlatformCFrame: CFrame? = nil
 local function clearPlatform()
 	ridingPlatform = nil
 	previousPlatformCFrame = nil
+	playerWaveState.PlatformRiding = false
 end
 
 local function bindCharacter(character: Model)
@@ -131,6 +136,7 @@ local function carryCharacter()
 	if ridingPlatform ~= platform or not previousPlatformCFrame then
 		ridingPlatform = platform
 		previousPlatformCFrame = platformCFrame
+		playerWaveState.PlatformRiding = true
 		return
 	end
 

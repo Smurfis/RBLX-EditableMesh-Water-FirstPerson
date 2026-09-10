@@ -107,6 +107,7 @@ local preSimulation = RunService.PreSimulation:Connect(function(dt: number)
 	local active = settings.Enabled
 		and player:GetAttribute("PlayerWaveMotionEnabled") ~= false
 		and State.Root == currentRoot
+		and not State.PlatformRiding
 		and State.SurfaceHold
 		and currentHumanoid.FloorMaterial == Enum.Material.Air
 		and not currentHumanoid.Sit
