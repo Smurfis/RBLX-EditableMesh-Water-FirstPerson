@@ -19,6 +19,12 @@ local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 
+-- Always begin a fresh character session with one locked, hidden cursor.
+player:SetAttribute("SettingsOpen", false)
+player:SetAttribute("MouseReleased", false)
+UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+UserInputService.MouseIconEnabled = false
+
 local MAX_HEAD_PITCH = math.rad(70)
 local MAX_HEAD_YAW = math.rad(80)
 local HEAD_FOLLOW_SPEED = 15

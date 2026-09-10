@@ -349,6 +349,7 @@ statusLabel.Parent = statusGui
 local SETTINGS_TOGGLE_KEY = Enum.KeyCode.K
 local mouseReleased = false
 local settingsOpen = false
+player:SetAttribute("SettingsOpen", false)
 
 local function updateMouseUi()
 	player:SetAttribute("MouseReleased", mouseReleased)
