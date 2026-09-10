@@ -71,6 +71,22 @@ local WaterConfig =
 		:WaitForChild("WaterConfig")
 	)
 
+local WaterSounds =
+	ReplicatedStorage
+	:WaitForChild("Shared")
+	:WaitForChild("Sounds")
+	:WaitForChild("Water")
+
+local WaterSplashEntryTemplate =
+	WaterSounds:WaitForChild(
+		"WaterSplashEntry"
+	)
+
+assert(
+	WaterSplashEntryTemplate:IsA("Sound"),
+	"ReplicatedStorage.Shared.Sounds.Water.WaterSplashEntry must be a Sound"
+)
+
 
 local player =
 	Players.LocalPlayer
@@ -96,6 +112,10 @@ local BUOYANCY_SCALE =
 local ACTION_PRIORITY =
 	Enum.ContextActionPriority.High.Value
 	+ 10
+
+-- Walking down a shallow slope can briefly cross the entry threshold.
+-- Require real downward momentum before playing the impact sound.
+local ENTRY_SPLASH_MIN_FALL_SPEED = 4
 
 
 ----------------------------------------------------------------
@@ -133,6 +153,14 @@ local swimAttachment: Attachment? =
 
 local buoyancyForce: VectorForce? =
 	nil
+
+local entrySplashSound: Sound? =
+	nil
+
+local characterDescendantAddedConnection: RBXScriptConnection? =
+	nil
+
+local mutedDefaultSplashes: { [Instance]: RBXScriptConnection } = {}
 
 
 local bodyInWater =
@@ -175,6 +203,114 @@ end
 
 local function getSurfaceY(): number
 	return WaterConfig.GetSurfaceY()
+end
+
+
+local function disconnectDefaultSplashSuppression()
+	if characterDescendantAddedConnection then
+		characterDescendantAddedConnection:Disconnect()
+		characterDescendantAddedConnection = nil
+	end
+
+	for _, connection in mutedDefaultSplashes do
+		connection:Disconnect()
+	end
+
+	table.clear(mutedDefaultSplashes)
+end
+
+
+local function suppressDefaultSplash(
+	instance: Instance
+)
+	if
+		instance.Name ~= "Splash"
+		or (
+			not instance:IsA("Sound")
+			and not instance:IsA("AudioPlayer")
+		)
+		or mutedDefaultSplashes[instance]
+	then
+		return
+	end
+
+	local playable =
+		instance :: any
+
+	local function keepMuted()
+		if playable.Volume ~= 0 then
+			playable.Volume = 0
+		end
+	end
+
+	mutedDefaultSplashes[instance] =
+		instance
+		:GetPropertyChangedSignal("Volume")
+		:Connect(keepMuted)
+
+	keepMuted()
+end
+
+
+local function setupEntrySplashAudio(
+	character: Model,
+	currentRoot: BasePart
+)
+	disconnectDefaultSplashSuppression()
+	entrySplashSound = nil
+
+	for _, descendant in character:GetDescendants() do
+		suppressDefaultSplash(descendant)
+	end
+
+	characterDescendantAddedConnection =
+		character.DescendantAdded:Connect(
+			suppressDefaultSplash
+		)
+
+	local oldSplash =
+		currentRoot:FindFirstChild(
+			"WaterSplashEntry_Local"
+		)
+
+	if oldSplash then
+		oldSplash:Destroy()
+	end
+
+	local splash =
+		WaterSplashEntryTemplate:Clone()
+
+	splash.Name =
+		"WaterSplashEntry_Local"
+
+	splash.Looped =
+		false
+
+	splash.Parent =
+		currentRoot
+
+	splash:Stop()
+	entrySplashSound = splash
+end
+
+
+local function playEntrySplash(
+	verticalVelocity: number
+)
+	if verticalVelocity > -ENTRY_SPLASH_MIN_FALL_SPEED then
+		return
+	end
+
+	local splash =
+		entrySplashSound
+
+	if not splash then
+		return
+	end
+
+	splash:Stop()
+	splash.TimePosition = 0
+	splash:Play()
 end
 
 
@@ -479,6 +615,15 @@ local function enterSwimming()
 		return
 	end
 
+	local entryVerticalVelocity = 0
+	local currentRoot =
+		rootPart
+
+	if currentRoot then
+		entryVerticalVelocity =
+			currentRoot.AssemblyLinearVelocity.Y
+	end
+
 
 	bodyInWater =
 		true
@@ -494,6 +639,10 @@ local function enterSwimming()
 	setBuoyancyEnabled(
 		true,
 		1
+	)
+
+	playEntrySplash(
+		entryVerticalVelocity
 	)
 
 
@@ -569,6 +718,8 @@ end
 local function setupCharacter(
 	character: Model
 )
+	disconnectDefaultSplashSuppression()
+	entrySplashSound = nil
 
 	local foundHumanoid =
 		character:WaitForChild(
@@ -625,6 +776,11 @@ local function setupCharacter(
 
 		local currentRoot =
 			rootPart
+
+		setupEntrySplashAudio(
+			character,
+			currentRoot
+		)
 
 
 		local oldAttachment =
@@ -1149,6 +1305,8 @@ player.CharacterAdded:Connect(
 
 
 player.CharacterRemoving:Connect(function()
+	disconnectDefaultSplashSuppression()
+	entrySplashSound = nil
 
 	humanoid =
 		nil

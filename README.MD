@@ -61,10 +61,13 @@ ReplicatedStorage/
     └── Sounds/
         └── Water/
             ├── WorldAmbience
-            └── UnderwaterAmbience
+            ├── UnderwaterAmbience
+            └── WaterSplashEntry
 ```
 
 `WaterOverlaySurfaceAppearance` must be a `SurfaceAppearance`. The main water renderer reads it from `Shared/Assets` and creates its ocean mesh layers at runtime. The separate coastline renderer clones the authored `WaterPart` and `CoastLine` templates from `Shared/Assets`.
+
+`WaterSplashEntry` must be a `Sound`. The swimming controller mutes Roblox's default character splash and plays this sound when the character enters the water with downward momentum.
 
 ## Roadmap
 
