@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -87,7 +88,7 @@ end
 if slime and slime:IsA("Model") then
 	local root = slime.PrimaryPart or slime:FindFirstChild("HumanoidRootPart", true)
 	if root and root:IsA("BasePart") then
-		game:GetService("RunService").Heartbeat:Connect(function()
+		RunService.Heartbeat:Connect(function()
 			local y = root.Position.Y
 			local surfaceY = WaterConfig.GetSurfaceY()
 			local inWater = y <= surfaceY + 1.5
