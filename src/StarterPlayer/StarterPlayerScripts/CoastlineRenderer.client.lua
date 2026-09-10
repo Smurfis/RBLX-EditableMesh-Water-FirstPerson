@@ -105,6 +105,7 @@ local FOLLOW_SNAP = 32
 -- Keep the authored coastline effect present while reducing how strongly it
 -- competes with the generated ocean layers. Set to 1 to restore full opacity.
 local EFFECT_OPACITY_MULTIPLIER = 0.55
+local MINIMUM_EFFECT_TRANSPARENCY = 1 - EFFECT_OPACITY_MULTIPLIER
 
 -- The query remains a little tolerant of thin visual geometry and animated
 -- hands, then uses timing hysteresis to avoid rapidly restarting the loop.
@@ -670,10 +671,10 @@ local function updateSubmersionFade(
 		* alpha
 	local transparencyOverride = effectFolder:GetAttribute("TransparencyOverride")
 	local visibleWaterTransparency = if typeof(transparencyOverride) == "number"
-		then math.clamp(transparencyOverride, 0, 1)
+		then math.clamp(transparencyOverride, MINIMUM_EFFECT_TRANSPARENCY, 1)
 		else waterPartVisibleTransparency
 	local visibleCoastlineTransparency = if typeof(transparencyOverride) == "number"
-		then math.clamp(transparencyOverride, 0, 1)
+		then math.clamp(transparencyOverride, MINIMUM_EFFECT_TRANSPARENCY, 1)
 		else coastlineVisibleTransparency
 
 	waterPart.Transparency =

@@ -229,8 +229,11 @@ createSlider("WaveFoamTransparencySlider", "Wave foam transparency", 0, function
 	setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "WaveFoamTransparencyOverride", value)
 end)
 
-createSlider("CoastlineTransparencySlider", "Coastline transparency", 0.45, function(value)
-	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "TransparencyOverride", value)
+local COASTLINE_MIN_TRANSPARENCY = 0.45
+
+createSlider("CoastlineTransparencySlider", "Coastline visibility", 1, function(value)
+	local transparency = 1 - value * (1 - COASTLINE_MIN_TRANSPARENCY)
+	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "TransparencyOverride", transparency)
 end)
 
 local statusGui = Instance.new("ScreenGui")

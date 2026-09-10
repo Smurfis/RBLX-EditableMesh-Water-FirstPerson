@@ -217,6 +217,8 @@ Settings now includes independent `Wave foam transparency` and `Coastline transp
 
 Settings also includes `Remove CoastLine Effect` and `Transparent Ocean` toggles. Removing the CoastLine effect detaches both client VFX parts for a performance-friendly off state and restores them when enabled.
 
+The Coastline visibility control is inverted for clarity: slider value `1` keeps the effect at its minimum 45% transparency, and the effect can only become more transparent from there.
+
 The developer water-tuning panel introduced in `4e6f7c3` was reverted in `6e0ef29` at the user's request. Only removal of the Player Reflections option was retained; developer sliders and their renderer changes are not part of the final state.
 
 ### Replicated Water-Contact Splash Rings
