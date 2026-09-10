@@ -238,14 +238,14 @@ end
 local settingsRow = createKeybindRow(
 	"SettingsKeybind",
 	"rbxassetid://97812683336887",
-	"[SETTINGS: `]",
+	"SETTINGS: [`]",
 	-42
 )
 
 local freeMouseRow = createKeybindRow(
 	"MouseLockKeybind",
 	"rbxassetid://77904780414059",
-	"[Free Mouse: M]",
+	"Free Mouse: [M]",
 	-70
 )
 
