@@ -38,9 +38,25 @@ WaterConfig.Swimming = {
 		RestoreResponse = 6,
 		MaxRestoreSpeed = 4,
 		DescendInputThreshold = -0.1,
+		-- Measured lower-CoastLine foot contact for the current shoreline test.
+		-- Base surface Y=6 plus this offset gives Y=7.458.
+		FootContactOffset = 1.458,
 	},
 }
 
+
+-- Gentle player-only response. This deliberately filters small wave chop.
+WaterConfig.PlayerWaveMotion = {
+	Enabled = true,
+	Octaves = 6,
+	SampleHz = 30,
+	HeightStrength = 0.3,
+	MaxHeight = 0.35,
+	MaxOffsetSpeed = 0.75,
+	Response = 5,
+	TiltStrength = 0.35,
+	MaxTiltDegrees = 6,
+}
 
 WaterConfig.Underwater = {
 	CameraEnterDepth = 0.15,
@@ -61,6 +77,9 @@ WaterConfig.Underwater = {
 	DeepContrast = 0.45,
 	DeepSaturation = -0.75,
 	DeepBlur = 10,
+	-- Prevent already-dark night lighting from making deep water unreadable.
+	NightBrightnessLift = 0.35,
+	NightBlackoutReduction = 0.45,
 }
 
 

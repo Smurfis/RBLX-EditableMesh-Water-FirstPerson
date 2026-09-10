@@ -13,7 +13,19 @@
         "$className": "Folder",
         "$path": "src/ReplicatedStorage/Modules",
         "$ignoreUnknownInstances": true
+      },
+
+      "UI": {
+        "$className": "Folder",
+        "$path": "src/ReplicatedStorage/UI",
+        "$ignoreUnknownInstances": true
       }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "$path": "src/ServerScriptService",
+      "$ignoreUnknownInstances": true
     },
 
     "StarterPlayer": {

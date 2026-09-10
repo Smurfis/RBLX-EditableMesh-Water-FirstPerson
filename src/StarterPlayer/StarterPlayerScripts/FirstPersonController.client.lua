@@ -19,6 +19,12 @@ local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 
+-- Always begin a fresh character session with one locked, hidden cursor.
+player:SetAttribute("SettingsOpen", false)
+player:SetAttribute("MouseReleased", false)
+UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+UserInputService.MouseIconEnabled = false
+
 local MAX_HEAD_PITCH = math.rad(70)
 local MAX_HEAD_YAW = math.rad(80)
 local HEAD_FOLLOW_SPEED = 15
@@ -60,7 +66,13 @@ end
 
 
 local function applyMouseState()
-	if mouseReleased then
+	local settingsOpen = player:GetAttribute("SettingsOpen") == true
+	local releasedOverride = player:GetAttribute("MouseReleased")
+	local shouldRelease = if typeof(releasedOverride) == "boolean"
+		then releasedOverride
+		else mouseReleased
+
+	if settingsOpen or shouldRelease then
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 		UserInputService.MouseIconEnabled = true
 	else
@@ -302,6 +314,7 @@ UserInputService.InputBegan:Connect(function(
 
 	if input.KeyCode == Enum.KeyCode.M then
 		mouseReleased = not mouseReleased
+		player:SetAttribute("MouseReleased", mouseReleased)
 		applyMouseState()
 	end
 end)

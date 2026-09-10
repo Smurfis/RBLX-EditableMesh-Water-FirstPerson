@@ -13,24 +13,36 @@ local WaterConfig = require(
 		:WaitForChild("Modules")
 		:WaitForChild("WaterConfig")
 )
+local WaterWaveSampler = require(
+	ReplicatedStorage
+		:WaitForChild("Modules")
+		:WaitForChild("WaterWaveSampler")
+)
 
 local waterSounds = ReplicatedStorage
 	:WaitForChild("Shared")
 	:WaitForChild("Sounds")
 	:WaitForChild("Water")
+local splashEvent = ReplicatedStorage:WaitForChild("WaterSplashRingEvent")
 
-local splashTemplate = waterSounds:WaitForChild("WaterSplashEntry")
-assert(
-	splashTemplate:IsA("Sound"),
-	"ReplicatedStorage.Shared.Sounds.Water.WaterSplashEntry must be a Sound"
-)
+local shallowFootstepTemplate = waterSounds:FindFirstChild("ShallowFootsteps")
+if not shallowFootstepTemplate or not shallowFootstepTemplate:IsA("Sound") then
+	warn("[WaterFootsteps] ShallowFootsteps is missing from ReplicatedStorage.Shared.Sounds.Water; falling back to WaterSplashEntry.")
+	shallowFootstepTemplate = waterSounds:WaitForChild("WaterSplashEntry")
+end
+assert(shallowFootstepTemplate:IsA("Sound"), "ReplicatedStorage.Shared.Sounds.Water.ShallowFootsteps must be a Sound")
 
 local player = Players.LocalPlayer
 
 local FOOT_WATER_DEPTH = 4
-local FOOT_WATER_MARGIN = 0.6
-local MIN_ROOT_HEIGHT_ABOVE_SURFACE = 0.8
-local MAX_ROOT_HEIGHT_ABOVE_SURFACE = 4.0
+-- Keep shallow walking active slightly above the visible wave edge. The
+-- footprint ring still uses the separate calibrated foot-contact plane.
+local FOOT_WATER_MARGIN = 1.4
+local FOOT_RING_CONTACT_TOLERANCE = 0.75
+local FOOT_RING_HEIGHT_OFFSET = 0.08
+local FOOT_CONTACT_OFFSET = WaterConfig.Swimming.SurfaceTest.FootContactOffset or 1.458
+local MIN_ROOT_HEIGHT_ABOVE_SURFACE = 0.4
+local MAX_ROOT_HEIGHT_ABOVE_SURFACE = 6.0
 local MIN_STEP_INTERVAL = 0.24
 local MAX_STEP_INTERVAL = 0.55
 local STEP_SPEED_SCALE = 0.018
@@ -43,6 +55,7 @@ local waterFootstep: Sound? = nil
 local descendantConnection: RBXScriptConnection? = nil
 local savedRunningVolumes: { [Sound]: number } = {}
 local stepClock = 0
+local shallowPaused = false
 
 local function isRunningSound(instance: Instance): boolean
 	return instance:IsA("Sound") and instance.Name == "Running"
@@ -87,13 +100,14 @@ local function setupCharacter(newCharacter: Model)
 	humanoid = newCharacter:WaitForChild("Humanoid") :: Humanoid
 	rootPart = newCharacter:WaitForChild("HumanoidRootPart") :: BasePart
 
-	local sound = splashTemplate:Clone()
-	sound.Name = "WaterFootstep_Local"
-	sound.Looped = false
-	sound.Volume *= STEP_VOLUME_SCALE
-	sound.Parent = rootPart
-	sound:Stop()
-	waterFootstep = sound
+	local shallowSound = shallowFootstepTemplate:Clone()
+	shallowSound.Name = "ShallowFootsteps_Local"
+	shallowSound.Looped = true
+	shallowSound.Volume *= STEP_VOLUME_SCALE
+	shallowSound.Parent = rootPart
+	shallowSound:Stop()
+	waterFootstep = shallowSound
+	shallowPaused = false
 
 	for _, descendant in newCharacter:GetDescendants() do
 		muteRunningSound(descendant)
@@ -113,35 +127,51 @@ local function getFootParts(currentCharacter: Model): { BasePart }
 	return parts
 end
 
-local function feetTouchWater(currentCharacter: Model, currentRoot: BasePart): boolean
+local function feetTouchWater(currentCharacter: Model, currentRoot: BasePart): (boolean, BasePart?, number?)
 	local surfaceY = WaterConfig.GetSurfaceY()
 	local rootHeight = currentRoot.Position.Y - surfaceY
 	if rootHeight < MIN_ROOT_HEIGHT_ABOVE_SURFACE
 		or rootHeight > MAX_ROOT_HEIGHT_ABOVE_SURFACE
 	then
-		return false
+		return false, nil, nil
 	end
 
 	for _, foot in getFootParts(currentCharacter) do
 		local footY = foot.Position.Y
-		if footY <= surfaceY + FOOT_WATER_MARGIN
-			and footY >= surfaceY - FOOT_WATER_DEPTH
+		local wave = WaterWaveSampler.Sample(foot.Position.X, foot.Position.Z, nil, 6)
+		local animatedSurfaceY = surfaceY + wave.Height
+		local footContactY = surfaceY + FOOT_CONTACT_OFFSET
+		local shallowTopY = math.max(animatedSurfaceY + FOOT_WATER_MARGIN, footContactY + FOOT_WATER_MARGIN)
+		if footY <= shallowTopY
+			and footY >= footContactY - FOOT_WATER_DEPTH
 		then
-			return true
+			local ringSurfaceY = if footY <= footContactY + FOOT_RING_CONTACT_TOLERANCE
+				and footY >= footContactY - FOOT_WATER_DEPTH
+				then footContactY
+				else nil
+			return true, foot, ringSurfaceY
 		end
 	end
-	return false
+	return false, nil, nil
 end
 
-local function playWaterStep(speed: number)
+local function playWaterStep(speed: number, foot: BasePart?, ringSurfaceY: number?)
 	local sound = waterFootstep
 	if not sound then
 		return
 	end
 
 	sound.PlaybackSpeed = math.clamp(0.9 + speed / 24, 0.9, 1.45)
-	sound.TimePosition = 0
-	sound:Play()
+	if not sound.IsPlaying then
+		sound.TimePosition = 0
+		sound:Play()
+	end
+	if foot and ringSurfaceY then
+		splashEvent:FireServer(
+			Vector3.new(foot.Position.X, ringSurfaceY + FOOT_RING_HEIGHT_OFFSET, foot.Position.Z),
+			"Footstep"
+		)
+	end
 end
 
 player.CharacterAdded:Connect(setupCharacter)
@@ -157,16 +187,35 @@ RunService.Heartbeat:Connect(function(deltaTime)
 		return
 	end
 
-	local touchingWater = feetTouchWater(currentCharacter, currentRoot)
+	local touchingWater, touchingFoot, ringSurfaceY = feetTouchWater(currentCharacter, currentRoot)
 	if not touchingWater then
 		restoreRunningSounds()
 		stepClock = 0
+		if waterFootstep then
+			waterFootstep:Stop()
+		end
+		shallowPaused = false
 		return
 	end
 
 	for sound in pairs(savedRunningVolumes) do
 		if sound.Parent then
 			sound.Volume = 0
+			if sound.IsPlaying then
+				sound:Stop()
+			end
+		end
+	end
+	for _, descendant in currentCharacter:GetDescendants() do
+		if isRunningSound(descendant) then
+			local runningSound = descendant :: Sound
+			if savedRunningVolumes[runningSound] == nil then
+				savedRunningVolumes[runningSound] = runningSound.Volume
+			end
+			runningSound.Volume = 0
+			if runningSound.IsPlaying then
+				runningSound:Stop()
+			end
 		end
 	end
 
@@ -174,12 +223,24 @@ RunService.Heartbeat:Connect(function(deltaTime)
 	local moving = currentHumanoid.MoveDirection.Magnitude > 0.05
 	if not moving or currentHumanoid.FloorMaterial == Enum.Material.Air then
 		stepClock = 0
+		if waterFootstep and waterFootstep.IsPlaying then
+			waterFootstep.Looped = false
+			waterFootstep:Pause()
+			shallowPaused = true
+		end
 		return
+	end
+	if waterFootstep then
+		waterFootstep.Looped = true
+		if shallowPaused then
+			waterFootstep:Resume()
+			shallowPaused = false
+		end
 	end
 
 	stepClock -= deltaTime
 	if stepClock <= 0 then
-		playWaterStep(speed)
+		playWaterStep(speed, touchingFoot, ringSurfaceY)
 		stepClock = math.clamp(
 			MAX_STEP_INTERVAL - speed * STEP_SPEED_SCALE,
 			MIN_STEP_INTERVAL,
@@ -187,4 +248,3 @@ RunService.Heartbeat:Connect(function(deltaTime)
 		)
 	end
 end)
-

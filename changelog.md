@@ -1,6 +1,6 @@
 # Changelog — RBLX EditableMesh Water First Person
 
-Reconstructed development log for 9–10 September 2026 from the Git history of `Smurfis/RBLX-EditableMesh-Water-FirstPerson`, plus documented Studio-side changes.
+Development log for 9–10 September 2026 from the Git history of `Smurfis/RBLX-EditableMesh-Water-FirstPerson`, plus documented Studio-side changes. Updated from the 10 September development chat through splash-ring commit `0ca845a` and subsequent asset organisation on `water-gerstner-buoyancy-test`.
 
 The repository itself begins on 9 September 2026. Experiments before the first commit are not represented in Git history.
 
@@ -116,9 +116,9 @@ WaterSurface
 WaveFoamVFX
 ```
 
-During this investigation, `WaveFoamVFX` was made solid temporarily to remove a visual screen-tearing effect where the ocean appeared to clip through itself. This established a stable readable upper layer before the final transparency and SurfaceAppearance tuning.
-
 ### Cartoony Water V1
+
+During the camera-angle investigation, `WaveFoamVFX` was made solid temporarily to remove visual tearing/clipping between water layers before final transparency and SurfaceAppearance tuning.
 
 A polished visual checkpoint was committed as `Cartoony water working v1`. The project had moved beyond the original realistic-water tutorial toward a stylized identity combining animated wave geometry, layered translucent water, bright intersection highlights, atmospheric horizon treatment, first-person swimming, and underwater depth presentation.
 
@@ -134,14 +134,14 @@ The player-following coastline effect was made less visually dominant with:
 EFFECT_OPACITY_MULTIPLIER = 0.55
 ```
 
-This runtime opacity change allowed the visible `SurfaceAppearance` changes on the generated water to be evaluated clearly. The `__ClientCoastlineEffect` SurfaceAppearance settings themselves were not changed. Further transparency tuning was performed manually in Studio on the Neon and upper visual layers.
+This runtime opacity change made the generated water's SurfaceAppearance changes easier to evaluate. The `__ClientCoastlineEffect` SurfaceAppearance settings themselves were unchanged. Further transparency tuning was performed manually in Studio on the Neon and upper visual layers. These Studio notes were also recorded in `e65d701` on `main` after this experiment branch's baseline.
 
 ### Wind Waker Surface Effect — First Successful Version
 
 A custom alpha-mask texture containing large irregular white cellular wave lines was added:
 
 ```text
-AlphaMaskOverlay/
+Imgs/AlphaMaskOverlay/
 └── WindWaker_WaveLines_01.png
 ```
 
@@ -156,7 +156,7 @@ WaterOverlaySurfaceAppearance
 ColorMap = rbxassetid://92873785961587
 ```
 
-The Neon coastline and upper water layer were made slightly more transparent so all effects remain visible together. The coastline SurfaceAppearance itself was left unchanged. This produced the first successful Wind Waker-style cellular wave overlay integrated with the moving EditableMesh ocean.
+The Neon coastline and upper water layer were made slightly more transparent so all effects remain visible together. This produced the first successful Wind Waker-style cellular wave overlay integrated with the moving EditableMesh ocean.
 
 The current look combines:
 
@@ -168,6 +168,106 @@ Wind Waker wave-line mask
         + depth-based wave colouring
         + atmospheric horizon
 ```
+
+## 2026-09-10 — Shared Waves, Buoyancy and Player Tracking
+
+Work in this section is on `water-gerstner-buoyancy-test`, created from `b45789e`. The prototype remains separate from `main`.
+
+### Shared Wave Sampler / Gerstner Experiment
+
+`fd8fa03` extracted the existing wave field into `ReplicatedStorage.Modules.WaterWaveSampler`. The renderer and interaction controllers now share deterministic wave data and one time origin. This retained seed `1337`, 14 maximum octaves, exponential swell shaping, recursive sampling and horizontal choppiness, together with the existing renderer's mesh, layers, scheduling, LOD and far-water coverage. Queries expose height, displacement, position and a finite-difference normal.
+
+The Gerstner experiment uses the ocean's existing stylized wave implementation; it did not replace the wave field with a new textbook Gerstner formula. Floating objects sample those same waves, with profile-specific filtering.
+
+Profile names are case-insensitive and `medprop` resolves to `MediumProp`. The temporary calmer response experiment was reverted after confirming the frantic behavior came from a large prop configured as `SmallProp`; the original MediumProp profile remains unchanged.
+
+### Opt-In Buoyancy and Deformation
+
+- `d4fed6a` added smooth height following for Parts and Models tagged `WaterInteractable`; untagged geometry is untouched and Models require a `PrimaryPart`.
+- `3297f41` added smoothed pitch and roll with heading preservation and adjustable rotation strength.
+- `29008d9` added SmallProp, MediumProp, Boat and LargeShip profiles with 1/3/6/8 samples, filtered octave counts, update-rate limits and distance culling.
+- `7d2901a` added optional `WaterAllowHorizontalDrift` tuning; fixed X/Z remains the default.
+- `12269f9` added a separate `WaterDeformable` MeshPart experiment. It caches original vertices, creates a local runtime visual, samples the shared waves and guards EditableMesh creation failures while preserving the source mesh.
+
+These systems are local visual prototypes; their object positions are not server-authoritative boat physics.
+
+### Player Surface Motion and Tracking on Floating Parts
+
+`00b5d6d` added gentle player surface bobbing and body tilt through `PlayerWaveMotionController` and `PlayerWaveMotionState`. Swimming consumes the smoothed offset; response fades when surface hold ends. Sampling is capped at 30 Hz with six octaves, and height/tilt limits are centralised in `WaterConfig`.
+
+`a60f019` added player tracking/carry from the movement and rotation of supporting `WaterInteractable` platforms. The player follows their vertical movement, pitch, roll and yaw while standing on them. Follow-up fixes replaced unsupported Humanoid floor access with raycasts (`09967d1`), stabilised body tilt through a cached Motor6D base pose (`6e2e9c6`), and suppressed independent wave motion while riding to avoid applying wave movement twice (`44c236e`). `eba2507` expanded support detection to five points around the character to improve contact at platform edges and corners.
+
+Controller regression checks and Studio test guidance are included under `tests/` and [docs/PLAYER_WAVE_MOTION.md](docs/PLAYER_WAVE_MOTION.md).
+
+### Spawn Visual Cleanup
+
+`249e3bc` brought the spawn visual controller into source control and hardened cleanup: temporary body highlights become fully transparent, render callbacks disconnect, the authored SpawnLocation appearance is restored, and the final state is checked again on the next render frame.
+
+## 2026-09-10 — UI Changes and Replicated Splash Rings
+
+### Settings and First-Person HUD
+
+The settings/HUD work from `97bbb9f` through `3f2fdca` added the `ReplicatedStorage.UI.Checkbox` Rojo mapping, an animated scrollable settings panel, water-opacity and camera-sensitivity slider controls, and a compact keybind HUD option. Final controls use `SETTINGS: [=]` and `Free Mouse: [M]`, with tappable controls for mobile. Opening settings releases the cursor; closing it restores first-person lock.
+
+The HUD uses cartoon styling, a centred server identifier and a separate responsive top-right title/version/FPS group. FPS is capitalised and appears beside the version. Mouse initialisation and icon state were corrected: the icon is visible while locked, hidden while released, and a small centre reticle indicates first-person lock.
+
+The developer water-tuning panel introduced in `4e6f7c3` was reverted in `6e0ef29` at the user's request. Only removal of the Player Reflections option was retained; developer sliders and their renderer changes are not part of the final state.
+
+### Replicated Water-Contact Splash Rings
+
+`0ca845a` added local detection of downward crossings into the configured water-entry band and a server handler for splash requests. The server checks request type, distance from the player, proximity to the base water surface and a cooldown, then clones the Studio-authored `ReplicatedStorage.Shared.Assets.SplashRing` Part into Workspace. Rings expand to 2.5 times their starting size and fade over 0.7 seconds before cleanup, making the effect visible to other players. The Rojo project now maps `ServerScriptService`.
+
+This is replicated visual feedback at the configured base surface. It does not establish server authority for the separate buoyancy prototype.
+
+The follow-up paddle pass separates airborne entry from surface contact. An entry ring is armed only after the player has clearly left the water, so holding Space or small surface bobbing cannot repeatedly fire the entry effect. While `SurfaceHold` is active, hand movement near the waterline emits a restrained ring at most once every 0.85 seconds, creating the requested paddling response around the player's hands.
+
+The paddle trigger now follows horizontal swimming speed and alternates hands. It places each smaller ring 1.35 studs ahead of the active hand at the CoastLine/waterline, so forward and backstroke swimming produces the pushing-water illusion even when the hand animation remains visually above the surface. Paddle rings start 0.45 studs above CoastLine, tween down into it, remain throttled at 0.62 seconds, and are 5% larger than the previous paddle size.
+
+The entry ring now starts 10% wider and 50% thicker vertically, with a slightly longer fade, so the first jump into the water reads clearly before disappearing.
+
+Shallow-water walking audio now checks the shared animated wave height at each foot rather than only the fixed base surface. The footstep band was widened slightly so standing and walking through visible wave crests keeps the water sound active instead of falling back to solid-ground audio.
+
+Walking just above the shoreline now also emits a small replicated `WaterFootstepRing` at the detected foot. These rings start slightly above CoastLine, settle into the waterline and fade quickly, creating a subtle bubble/splash contact without using the heavier entry effect.
+
+Footprint placement uses the sampled animated surface for shallow-water audio while the ring eligibility is tuned to the measured lower-CoastLine contact plane. Audio can remain active across a broad shallow-water band, and the ring contact tolerance is widened to 0.75 studs so the measured foot position is captured; it starts slightly above contact and settles into the CoastLine touch.
+
+The foot contact plane is now explicitly tuned to the measured shoreline marker at Y=7.458 (`WaterConfig.Swimming.SurfaceTest.FootContactOffset = 1.458` for the current base surface Y=6). Foot rings emit at or below that plane, then settle from 0.08 studs above it.
+
+Footstep rings use `SmoothPlastic` instead of the ForceField material used by entry and paddle rings, making the smaller shoreline contacts visibly distinct.
+
+Shallow walking now uses the Studio-managed `ShallowFootsteps` sound. Its three-second clip loops while movement continues, plays for up to one second after a short movement, and stops when the player leaves the shallow-water band. The per-foot shoreline rings remain tied to the movement cadence.
+
+When movement stops, the sound now pauses immediately at its current position instead of continuing through the rest of the clip; it resumes and loops again when shallow movement resumes.
+
+The pause state is tracked locally because Roblox `Sound` has no `PlaybackState` property; this removes the runtime error reported by Studio.
+
+Underwater visuals now compensate for night lighting. Between 18:00 and 06:00, deep-water brightness is lifted by up to 0.35 and the black overlay is reduced by up to 45%, preventing 24:00 underwater scenes from becoming unreadably black while preserving the daytime depth treatment.
+
+The shallow sound no longer restarts on every footstep tick, preventing rapid looping. A single delayed exit ring and particle burst is also emitted when the player leaves the pool, allowing a clean jump-out and re-entry effect without repeated triggers.
+
+While shallow water is active, captured Roblox `Running` sounds are now explicitly stopped as well as muted. This prevents the default footstep system from restarting or cutting across `ShallowFootsteps`; normal running sound volume is restored after leaving the water band.
+
+The shallow eligibility check now includes the calibrated foot-contact plane, rather than requiring the foot to be inside a lower animated-crest window. This keeps rings active on the Y=6.901 shoreline floor even when the local wave sample is lower, and the root-height allowance is raised to six studs for that near-surface ledge.
+
+The controller now checks for that Studio sound without an infinite wait. If it is absent or misnamed, it warns once and falls back to `WaterSplashEntry` so shallow-water movement remains functional until `ShallowFootsteps` is placed under `ReplicatedStorage.Shared.Sounds.Water`.
+
+Raised the shallow-footstep detection margin from 1.0 to 1.4 studs so walking on a floor around Y=6.901, just above the visible wave threshold, still processes shallow-water footsteps. Footprint placement remains governed by the measured Y=7.458 contact plane.
+
+The replicated splash rings now emit the supplied rainsplash texture (`rbxassetid://105796658952670`) from their centre. Jump entries use a larger 18-particle burst, paddle rings use a restrained three-particle burst, and footstep rings use a small four-particle burst.
+
+### Source Assets
+
+- Moved the unchanged wave-line texture to `Imgs/AlphaMaskOverlay/WindWaker_WaveLines_01.png`.
+- Added `Imgs/Decals/SpawnLocationDecal.png`.
+- Added audio source files `Sounds/Water-Splash-Entry.mp3` and `Sounds/Water-Surface-Idle.mp3`.
+
+These files are repository source assets; Studio-managed instances and uploaded asset IDs remain configured in Studio.
+
+### Validation and Open Testing Issue
+
+The development chat records successful Rojo builds/sourcemaps, Luau compilation and player-wave controller regression checks during implementation. Those checks do not prove visual parity, physics behaviour or multiplayer stability in Studio.
+
+The final chat investigation recorded `RBXCRASH: OutOfMemoryGraphics` and out-of-memory messages during Studio client/server testing. Graphics-memory pressure remains an open testing issue; no crash fix was committed. Single-client testing or lower Studio graphics quality was suggested for further investigation.
 
 ## Current State After Two Days
 
@@ -188,6 +288,10 @@ The tutorial experiment has become a standalone first-person water project with:
 - layered stylized water rendering;
 - world-locked texture UVs;
 - Wind Waker-inspired cellular wave lines;
+- shared wave sampling, opt-in floating props and experimental mesh deformation;
+- gentle player wave motion and tracking on floating platforms;
+- animated settings, mobile keybind controls and a first-person status HUD;
+- server-replicated water-contact splash rings;
 - Studio-authored visual assets that survive Rojo synchronisation.
 
 The current goal is to make first-person water in Roblox feel more immersive, reactive, cinematic, and visually interesting than Roblox water by default.
@@ -199,10 +303,10 @@ These are future directions rather than completed features:
 - animate or distort the Wind Waker UV mask;
 - experiment with multiple moving wave-line frequencies;
 - improve shoreline behaviour around world geometry;
-- add splash and ripple particles;
+- extend the existing splash rings with splash and ripple particles;
 - add camera-level water droplets and surfacing effects;
-- add wave-aware buoyancy queries;
-- floating props and boat physics;
+- validate visual wave parity and refine the existing buoyancy queries;
+- develop server-authoritative boat physics beyond the local floating-prop prototype;
 - hull interaction and wake generation;
 - foam around moving objects;
 - stronger storm and ocean states;

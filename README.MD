@@ -57,7 +57,8 @@ ReplicatedStorage/
     ├── Assets/
     │   ├── CoastLine
     │   ├── WaterPart
-    │   └── WaterOverlaySurfaceAppearance
+    │   ├── WaterOverlaySurfaceAppearance
+    │   └── SplashRing
     └── Sounds/
         └── Water/
             ├── WorldAmbience
@@ -72,6 +73,8 @@ ReplicatedStorage/
 
 `WaterSurfaceIdle` must be a `Sound`. The coastline renderer loops a local clone while either hand overlaps the authored `CoastLine` surface, raises its playback speed as the character swims, and progressively muffles it when the camera is underwater.
 
+Image source assets are stored under `Imgs/` and audio source files under `Sounds/`. They are not imported as Studio instances by Rojo. `Shared.Assets.SplashRing` must be a Studio-authored `BasePart`; the server clones, expands and fades it for validated water-entry requests.
+
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md).
+See [ROADMAP.md](ROADMAP.md) for completed prototypes and remaining work, and [changelog.md](changelog.md) for the branch's development history.
