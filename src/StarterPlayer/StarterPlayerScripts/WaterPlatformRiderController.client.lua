@@ -16,6 +16,7 @@ local player = Players.LocalPlayer
 local humanoid: Humanoid? = nil
 local root: BasePart? = nil
 local characterConnection: RBXScriptConnection? = nil
+local floorRaycastParams: RaycastParams? = nil
 
 local ridingPlatform: Instance? = nil
 local previousPlatformCFrame: CFrame? = nil
@@ -43,6 +44,10 @@ local function bindCharacter(character: Model)
 
 	humanoid = currentHumanoid
 	root = currentRoot
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character }
+	floorRaycastParams = params
 	characterConnection = character.AncestryChanged:Connect(function(_, parent)
 		if not parent then
 			clearPlatform()
@@ -77,6 +82,25 @@ local function getPlatformCFrame(platform: Instance): CFrame?
 	return nil
 end
 
+local function getSupportingPart(currentHumanoid: Humanoid, currentRoot: BasePart): BasePart?
+	if currentHumanoid.FloorMaterial == Enum.Material.Air then
+		return nil
+	end
+
+	local params = floorRaycastParams
+	if not params then
+		return nil
+	end
+
+	local distance = math.max(currentHumanoid.HipHeight + 3, 5)
+	local result = workspace:Raycast(
+		currentRoot.Position,
+		Vector3.new(0, -distance, 0),
+		params
+	)
+	return if result then result.Instance else nil
+end
+
 local function carryCharacter()
 	local currentHumanoid = humanoid
 	local currentRoot = root
@@ -90,7 +114,9 @@ local function carryCharacter()
 		return
 	end
 
-	local platform = getPlatformFromFloor(currentHumanoid.FloorPart)
+	local platform = getPlatformFromFloor(
+		getSupportingPart(currentHumanoid, currentRoot)
+	)
 	if not platform then
 		clearPlatform()
 		return
@@ -125,6 +151,7 @@ player.CharacterRemoving:Connect(function()
 	end
 	humanoid = nil
 	root = nil
+	floorRaycastParams = nil
 	clearPlatform()
 end)
 
@@ -133,4 +160,3 @@ if player.Character then
 end
 
 RunService:BindToRenderStep("WaterPlatformRiderController", RENDER_PRIORITY, carryCharacter)
-
