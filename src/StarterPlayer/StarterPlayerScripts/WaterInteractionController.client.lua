@@ -22,6 +22,7 @@ local WaterWaveSampler = require(
 local TAG_NAME = "WaterInteractable"
 local SAMPLE_OCTAVES = 8
 local POSITION_RESPONSE = 7
+local ROTATION_RESPONSE = 6
 local MAX_UPDATE_DISTANCE = 500
 
 type InteractableState = {
@@ -29,6 +30,8 @@ type InteractableState = {
 	root: BasePart,
 	model: Model?,
 	currentY: number,
+	yaw: number,
+	currentRotation: CFrame,
 }
 
 local states: { [Instance]: InteractableState } = {}
@@ -73,6 +76,8 @@ local function addInteractable(instance: Instance)
 		root = root,
 		model = model,
 		currentY = root.Position.Y,
+		yaw = select(2, root.CFrame:ToOrientation()),
+		currentRotation = root.CFrame.Rotation,
 	}
 end
 
@@ -97,19 +102,21 @@ local function isEnabled(instance: Instance): boolean
 	return value ~= false
 end
 
-local function moveVertically(state: InteractableState, targetY: number)
+local function movePose(state: InteractableState, targetY: number, rotation: CFrame)
 	local root = state.root
-	local deltaY = targetY - root.Position.Y
-	if state.model then
-		state.model:PivotTo(state.model:GetPivot() + Vector3.new(0, deltaY, 0))
-		return
-	end
-
-	root.CFrame = CFrame.new(
+	local targetCFrame = CFrame.new(
 		root.Position.X,
 		targetY,
 		root.Position.Z
-	) * root.CFrame.Rotation
+	) * rotation
+
+	if state.model then
+		local delta = targetCFrame * root.CFrame:Inverse()
+		state.model:PivotTo(delta * state.model:GetPivot())
+		return
+	end
+
+	root.CFrame = targetCFrame
 end
 
 local function updateState(state: InteractableState, dt: number, cameraPosition: Vector3)
@@ -147,7 +154,20 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 	local targetY = WaterConfig.GetSurfaceY() + sample.Height * strength + offset
 	local alpha = 1 - math.exp(-POSITION_RESPONSE * dt)
 	state.currentY = state.currentY + (targetY - state.currentY) * alpha
-	moveVertically(state, state.currentY)
+
+	local rotationStrength = math.max(
+		0,
+		getNumberAttribute(instance, "WaterRotationStrength", 1)
+	)
+	local yawFrame = CFrame.Angles(0, state.yaw, 0)
+	local localNormal = yawFrame:VectorToObjectSpace(sample.Normal)
+	local pitch = -math.atan2(localNormal.Z, localNormal.Y) * rotationStrength
+	local roll = math.atan2(localNormal.X, localNormal.Y) * rotationStrength
+	local targetRotation = yawFrame * CFrame.Angles(pitch, 0, roll)
+	local rotationAlpha = 1 - math.exp(-ROTATION_RESPONSE * dt)
+	state.currentRotation = state.currentRotation:Lerp(targetRotation, rotationAlpha)
+
+	movePose(state, state.currentY, state.currentRotation)
 end
 
 RunService:BindToRenderStep(
