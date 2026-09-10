@@ -229,6 +229,8 @@ Walking just above the shoreline now also emits a small replicated `WaterFootste
 
 Footprint placement now uses the sampled animated surface directly below the contacting foot. Audio can remain active across a broad shallow-water band, but a ring is emitted only when the foot is within 0.45 studs above that wave surface; the ring starts 0.16 studs above contact and settles by 0.08 studs for a higher, more convincing CoastLine touch.
 
+Footstep rings use `SmoothPlastic` instead of the ForceField material used by entry and paddle rings, making the smaller shoreline contacts visibly distinct.
+
 The replicated splash rings now emit the supplied rainsplash texture (`rbxassetid://105796658952670`) from their centre. Jump entries use a larger 18-particle burst, paddle rings use a restrained three-particle burst, and footstep rings use a small four-particle burst.
 
 ### Source Assets

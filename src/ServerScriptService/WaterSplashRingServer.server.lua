@@ -104,6 +104,11 @@ event.OnServerEvent:Connect(function(player, requestedPosition, ringKind)
 	ring.CanCollide = false
 	ring.CanTouch = false
 	ring.CanQuery = false
+	if ringKind == "Footstep" then
+		-- Keep shoreline footprints visually distinct from the ForceField
+		-- entry/paddle rings while retaining the template's colour.
+		ring.Material = Enum.Material.SmoothPlastic
+	end
 	ring.CFrame = CFrame.new(requestedPosition) * (template.CFrame - template.Position)
 	ring.Parent = workspace
 	emitSplashParticles(ring, ringKind)
