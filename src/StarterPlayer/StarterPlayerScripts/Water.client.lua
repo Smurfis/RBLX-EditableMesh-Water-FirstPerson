@@ -32,9 +32,6 @@ local Stats = game:GetService("Stats")
 -- MATH LOCALS
 --==============================================================
 
-local m_cos = math.cos
-local m_sin = math.sin
-local m_exp = math.exp
 local m_clamp = math.clamp
 local m_round = math.round
 local m_floor = math.floor
@@ -58,6 +55,13 @@ local WaterConfig =
 		:WaitForChild("WaterConfig")
 	)
 
+local WaterWaveSampler =
+	require(
+		ReplicatedStorage
+		:WaitForChild("Modules")
+		:WaitForChild("WaterWaveSampler")
+	)
+
 local WaterAssets =
 	ReplicatedStorage
 	:WaitForChild("Shared")
@@ -66,6 +70,8 @@ local WaterAssets =
 local function getSurfaceY(): number
 	return WaterConfig.GetSurfaceY()
 end
+
+local currentWaveTime = 0
 
 --==============================================================
 -- GENERAL
@@ -157,24 +163,6 @@ local UNDERWATER_FREEZE_DEPTH = 20
 -- Controls how rapidly performance scales down.
 
 local UNDERWATER_RATE_EXPONENT = 1.8
-
---==============================================================
--- WAVE CONFIG
---==============================================================
-
-local MAX_OCTAVES = 14
-
-local INITIAL_AMP = 2.8
-local INITIAL_FREQ = 0.12
-local INITIAL_SPEED = 1.5
-local BASE_STEEPNESS = 1.2
-local SWELL_BASELINE = 0.4197820789351331
-
-local AMP_MULT = 0.82
-local FREQ_MULT = 1.18
-local SPEED_MULT = 1.07
-
-local CHOPPINESS = 1.1
 
 --==============================================================
 -- DISTANCE LOD
@@ -443,161 +431,6 @@ for i = 1, COLOR_STEPS do
 				h / 0.5
 			)
 	end
-end
-
---==============================================================
--- WAVE PRECALCULATION
---==============================================================
-
-local rng =
-	Random.new(
-		1337
-	)
-
-local waveKX =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local waveKZ =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local waveSpeed =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local wavePhase =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local waveAmp =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local waveChopX =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local waveChopZ =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local waveDerivX =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local waveDerivZ =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local waveTime =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local cumulativeAmplitude =
-	table.create(
-		MAX_OCTAVES,
-		0
-	)
-
-local currentAmp =
-	INITIAL_AMP
-
-local currentFreq =
-	INITIAL_FREQ
-
-local currentSpeed =
-	INITIAL_SPEED
-
-local totalAmplitude =
-	0
-
-for i = 1, MAX_OCTAVES do
-
-	local angle =
-		rng:NextNumber(
-			0,
-			math.pi * 2
-		)
-
-	local dirX =
-		m_cos(angle)
-
-	local dirZ =
-		m_sin(angle)
-
-	totalAmplitude +=
-		currentAmp
-
-	waveKX[i] =
-		dirX
-		* currentFreq
-
-	waveKZ[i] =
-		dirZ
-		* currentFreq
-
-	waveSpeed[i] =
-		currentSpeed
-
-	wavePhase[i] =
-		rng:NextNumber(
-			0,
-			math.pi * 2
-		)
-
-	waveAmp[i] =
-		currentAmp
-
-	waveChopX[i] =
-		CHOPPINESS
-		* currentAmp
-		* dirX
-
-	waveChopZ[i] =
-		CHOPPINESS
-		* currentAmp
-		* dirZ
-
-	waveDerivX[i] =
-		currentAmp
-		* dirX
-
-	waveDerivZ[i] =
-		currentAmp
-		* dirZ
-
-	cumulativeAmplitude[i] =
-		totalAmplitude
-
-	currentAmp *=
-		AMP_MULT
-
-	currentFreq *=
-		FREQ_MULT
-
-	currentSpeed *=
-		SPEED_MULT
 end
 
 --==============================================================
@@ -1950,9 +1783,9 @@ local function getWaveColor(
 ): Color3
 
 	local amplitude =
-		cumulativeAmplitude[
-	octaves
-	]
+		WaterWaveSampler.GetCumulativeAmplitude(
+			octaves
+		)
 
 	if amplitude <= 0 then
 		return deepColor
@@ -2037,77 +1870,17 @@ local function calculateRegion(
 				distanceSquared
 			)
 
-		local waveY = 0
+		local sample =
+			WaterWaveSampler.Sample(
+				worldX,
+				worldZ,
+				currentWaveTime,
+				octaves
+			)
 
-		local displacementX = 0
-		local displacementZ = 0
-
-		local warpedX = 0
-		local warpedZ = 0
-
-		for i = 1, octaves do
-
-			local sampleX =
-				worldX
-				+ warpedX
-
-			local sampleZ =
-				worldZ
-				+ warpedZ
-
-			local angle =
-				sampleX
-				* waveKX[i]
-
-				+ sampleZ
-				* waveKZ[i]
-
-				+ waveTime[i]
-
-			local sinAngle =
-				m_sin(angle)
-
-			local cosAngle =
-				m_cos(angle)
-
-			local swell =
-				m_exp(
-
-					BASE_STEEPNESS
-
-					* (
-						sinAngle - 1
-					)
-				)
-
-			waveY +=
-				(
-					swell
-					- SWELL_BASELINE
-				)
-				* waveAmp[i]
-
-			displacementX +=
-				waveChopX[i]
-				* cosAngle
-
-			displacementZ +=
-				waveChopZ[i]
-				* cosAngle
-
-			local derivative =
-				swell
-				* BASE_STEEPNESS
-				* cosAngle
-
-			warpedX +=
-				derivative
-				* waveDerivX[i]
-
-			warpedZ +=
-				derivative
-				* waveDerivZ[i]
-		end
+		local waveY = sample.Height
+		local displacementX = sample.Displacement.X
+		local displacementZ = sample.Displacement.Z
 
 		positionValues[localIndex] =
 			Vector3.new(
@@ -2169,9 +1942,6 @@ end
 --==============================================================
 -- MAIN LOOP
 --==============================================================
-
-local startTime =
-	os.clock()
 
 local previousUnderwaterScale =
 	1
@@ -2264,24 +2034,11 @@ RunService:BindToRenderStep(
 			underwaterScale <= 0
 		)
 
-		-- Current WORLD wave time.
-		--
-		-- This remains current even when regions are frozen.
-		-- Therefore frozen regions can instantly reconstruct
-		-- the correct surface when they wake.
-
-		local t =
-			os.clock()
-		- startTime
-
-		for i = 1, activeOctaves do
-
-			waveTime[i] =
-				t
-				* waveSpeed[i]
-
-				+ wavePhase[i]
-		end
+		-- Current WORLD wave time. This remains current even when
+		-- regions are frozen, so waking regions reconstruct the same
+		-- surface phase as the shared sampler.
+		currentWaveTime =
+			WaterWaveSampler.GetTime()
 
 		local profile =
 			QUALITY_PROFILES[
