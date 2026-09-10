@@ -181,16 +181,6 @@ The Gerstner experiment uses the ocean's existing stylized wave implementation; 
 
 Profile names are case-insensitive and `medprop` resolves to `MediumProp`. The temporary calmer response experiment was reverted after confirming the frantic behavior came from a large prop configured as `SmallProp`; the original MediumProp profile remains unchanged.
 
-Added `WaterExitClimbController` as an initial local ledge-climb prototype using the supplied hang animation `14252434075` and climb animation `14240367012`. It uses separate wall and top-surface raycasts to align the character before the climb tween.
-
-Added temporary Studio diagnostics under the `[WaterExitClimb]` prefix for Space input, water eligibility, wall hits, top-ray misses, height rejection, hang entry and climb start.
-
-Expanded climb detection to a five-stud wall range, three vertical wall probes, and an eight-stud near-surface allowance. This lets the controller detect low pool ledges and medium-prop edges even when the player's head is already above the water.
-
-Climb targeting now includes the first-person camera look vector alongside horizontal root probes. The final target uses the Humanoid's hip/root height and zeros linear/angular velocity before and after the tween, reducing cases where the character appears to grip but cannot complete the pull-up.
-
-The ledge height range now accepts tops up to 4.5 studs below the character root, allowing swimmers to grab lower pool edges while retaining the 4.5-stud upward climb limit.
-
 ### Opt-In Buoyancy and Deformation
 
 - `d4fed6a` added smooth height following for Parts and Models tagged `WaterInteractable`; untagged geometry is untouched and Models require a `PrimaryPart`.
@@ -257,7 +247,7 @@ The shallow sound no longer restarts on every footstep tick, preventing rapid lo
 
 While shallow water is active, captured Roblox `Running` sounds are now explicitly stopped as well as muted. This prevents the default footstep system from restarting or cutting across `ShallowFootsteps`; normal running sound volume is restored after leaving the water band.
 
-The shallow eligibility check now includes the calibrated foot-contact plane, rather than requiring the foot to be inside a lower animated-crest window. This keeps rings active on the Y=6.901 shoreline floor even when the local wave sample is lower, and the root-height allowance is raised to six studs for that near-surface ledge.
+The shallow eligibility check now includes the calibrated foot-contact plane, rather than requiring the foot to be inside a lower animated-crest window. This keeps rings active on the Y=6.901 shoreline floor even when the local wave sample is lower, and the root-height allowance is raised to six studs for that near-surface edge.
 
 The controller now checks for that Studio sound without an infinite wait. If it is absent or misnamed, it warns once and falls back to `WaterSplashEntry` so shallow-water movement remains functional until `ShallowFootsteps` is placed under `ReplicatedStorage.Shared.Sounds.Water`.
 

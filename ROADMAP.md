@@ -8,11 +8,6 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Opt-in `WaterInteractable` Parts/Models follow sampled wave height with smoothed pitch/roll and preserved heading (`d4fed6a`, `3297f41`).
 - [x] SmallProp / MediumProp / Boat / LargeShip profiles, 1/3/6/8 sample points, distance culling and update throttling (`29008d9`).
 - [x] Profile aliases make `medprop` resolve to the original MediumProp behavior.
-- [x] Initial water exit ledge hang/climb prototype using separate wall/top raycasts and supplied animations.
-- [x] Water exit climb diagnostics report each Space/raycast decision in Studio Output.
-- [x] Water exit climb probes multiple wall heights and accepts higher near-surface positions.
-- [x] Water exit climb uses camera look direction and locks motion during final alignment.
-- [x] Water exit climb accepts ledges substantially below the swimmer's root.
 - [x] Optional horizontal buoyancy drift (`7d2901a`).
 - [x] Separate opt-in `WaterDeformable` EditableMesh experiment (`12269f9`).
 - [x] Gentle player surface bobbing/tilt integrated with swimming (`00b5d6d`).
@@ -35,7 +30,7 @@ Updated 10 September 2026 against `water-gerstner-buoyancy-test` through `0ca845
 - [x] Shallow footsteps pause immediately when movement stops and resume while movement continues.
 - [x] Shallow sound starts once per movement pass, with a delayed single exit ring/particle burst.
 - [x] Roblox running sounds are stopped while shallow-water footsteps are active and restored on exit.
-- [x] Shallow eligibility includes the calibrated foot-contact plane for near-surface ledges.
+- [x] Shallow eligibility includes the calibrated foot-contact plane for near-surface water.
 - [x] Night-time underwater compensation keeps deep water readable during dark hours.
 - [x] Missing shallow-footstep assets fail soft with a warning and entry-sound fallback.
 - [x] Shallow-footstep detection accepts the near-surface floor band above the visible wave edge.
