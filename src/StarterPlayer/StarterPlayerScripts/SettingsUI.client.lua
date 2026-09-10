@@ -305,15 +305,15 @@ serverLabel.Parent = statusGui
 
 local fpsLabel = Instance.new("TextLabel")
 fpsLabel.Name = "FPSStatus"
-fpsLabel.AnchorPoint = Vector2.new(0, 0)
-fpsLabel.Position = UDim2.fromScale(0.02, 0.095)
-fpsLabel.Size = UDim2.fromScale(0.16, 0.03)
+fpsLabel.AnchorPoint = Vector2.new(1, 0)
+fpsLabel.Position = UDim2.fromScale(0.91, 0.035)
+fpsLabel.Size = UDim2.fromScale(0.08, 0.035)
 fpsLabel.BackgroundTransparency = 1
 fpsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 fpsLabel.TextStrokeTransparency = 1
 fpsLabel.Font = Enum.Font.Cartoon
 fpsLabel.TextSize = 16
-fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Right
 fpsLabel.TextYAlignment = Enum.TextYAlignment.Center
 fpsLabel.Parent = statusGui
 
@@ -334,7 +334,7 @@ versionLabel.Parent = statusGui
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "ProjectStatus"
 statusLabel.AnchorPoint = Vector2.new(1, 0)
-statusLabel.Position = UDim2.fromScale(0.91, 0.035)
+statusLabel.Position = UDim2.fromScale(0.72, 0.035)
 statusLabel.Size = UDim2.fromScale(0.27, 0.035)
 statusLabel.BackgroundTransparency = 1
 statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -464,5 +464,5 @@ RunService.RenderStepped:Connect(function(deltaTime)
 	statusLabel.Text = "RBLX EditableMesh Water First Person"
 	serverLabel.Text = string.format("server: %s", serverId)
 	versionLabel.Text = "v4.x.x"
-	fpsLabel.Text = string.format("fps: %d", math.floor(fps + 0.5))
+	fpsLabel.Text = string.format("FPS: %d", math.floor(fps + 0.5))
 end)
