@@ -15,9 +15,17 @@ bubbleFolder.Name = "UnderwaterBubbles_Local"
 bubbleFolder.Parent = workspace
 
 local function spawnBubble(cameraPosition: Vector3)
+	local surfaceY = WaterConfig.GetSurfaceY()
 	local angle = rng:NextNumber(0, math.pi * 2)
 	local distance = rng:NextNumber(8, 18)
-	local position = cameraPosition + Vector3.new(math.cos(angle) * distance, rng:NextNumber(-3, 5), math.sin(angle) * distance)
+	local positionY = math.min(cameraPosition.Y + rng:NextNumber(-3, 5), surfaceY - 0.35)
+	local position = Vector3.new(
+		cameraPosition.X + math.cos(angle) * distance,
+		positionY,
+		cameraPosition.Z + math.sin(angle) * distance
+	)
+	local rise = math.min(rng:NextNumber(2, 5), surfaceY - position.Y - 0.2)
+	if rise <= 0.1 then return end
 	local bubble = Instance.new("Part")
 	bubble.Name = "UnderwaterBubble"
 	bubble.Shape = Enum.PartType.Ball
@@ -34,7 +42,7 @@ local function spawnBubble(cameraPosition: Vector3)
 
 	local lifetime = rng:NextNumber(1.2, 2.4)
 	TweenService:Create(bubble, TweenInfo.new(lifetime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Position = position + Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(2, 5), rng:NextNumber(-1, 1)),
+		Position = position + Vector3.new(rng:NextNumber(-1, 1), rise, rng:NextNumber(-1, 1)),
 		Size = bubble.Size * rng:NextNumber(1.4, 2.2),
 		Transparency = 1,
 	}):Play()
