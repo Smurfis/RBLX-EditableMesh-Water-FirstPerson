@@ -14,6 +14,7 @@ local HANG_ID = "rbxassetid://14252434075"
 local CLIMB_ID = "rbxassetid://14240367012"
 local WALL_DISTANCE = 3.5
 local MAX_CLIMB_HEIGHT = 4.5
+local MAX_LEDGE_DROP = 4.5
 local STANDOFF = 1.35
 local HANG_DROP = 1.15
 local CLIMB_TIME = 0.42
@@ -71,7 +72,7 @@ local function findLedge(): (CFrame?, CFrame?)
 	normal = normal.Unit
 	local top = workspace:Raycast(wall.Position - normal * 0.25 + Vector3.new(0, MAX_CLIMB_HEIGHT, 0), Vector3.new(0, -MAX_CLIMB_HEIGHT - 2, 0), rayParams)
 	if not top or not top.Instance:IsA("BasePart") or not top.Instance.CanCollide then debugLog("Top ray missed"); return nil, nil end
-	if top.Position.Y < currentRoot.Position.Y - 1 or top.Position.Y > currentRoot.Position.Y + MAX_CLIMB_HEIGHT then debugLog("Top height outside climb range"); return nil, nil end
+	if top.Position.Y < currentRoot.Position.Y - MAX_LEDGE_DROP or top.Position.Y > currentRoot.Position.Y + MAX_CLIMB_HEIGHT then debugLog("Top height outside climb range"); return nil, nil end
 	local facing = CFrame.lookAt(Vector3.zero, -normal)
 	local hang = CFrame.new(top.Position - Vector3.new(0, HANG_DROP, 0) + normal * STANDOFF) * facing
 	local climb = CFrame.new(top.Position + Vector3.new(0, 2.5, 0) + normal * (STANDOFF + 0.35)) * facing

@@ -185,6 +185,8 @@ Added `WaterExitClimbController` as an initial local ledge-climb prototype using
 
 Added temporary Studio diagnostics under the `[WaterExitClimb]` prefix for Space input, water eligibility, wall hits, top-ray misses, height rejection, hang entry and climb start.
 
+The ledge height range now accepts tops up to 4.5 studs below the character root, allowing swimmers to grab lower pool edges while retaining the 4.5-stud upward climb limit.
+
 ### Opt-In Buoyancy and Deformation
 
 - `d4fed6a` added smooth height following for Parts and Models tagged `WaterInteractable`; untagged geometry is untouched and Models require a `PrimaryPart`.
