@@ -125,8 +125,12 @@ event.OnServerEvent:Connect(function(player, requestedPosition, ringKind)
 		Size = initialSize * (if ringKind == "Paddle" then 1.35 elseif ringKind == "Footstep" then 1.5 else 2.5),
 		Transparency = 1,
 	}
-	if ringKind == "Paddle" or ringKind == "Footstep" then
+	if ringKind == "Paddle" then
 		tweenGoal.Position = Vector3.new(requestedPosition.X, surfaceY, requestedPosition.Z)
+	elseif ringKind == "Footstep" then
+		-- Keep a foot ring just above its animated contact point. The client
+		-- sampled that wave height; only settle it slightly into the contact.
+		tweenGoal.Position = requestedPosition - Vector3.new(0, 0.08, 0)
 	end
 	local tween = TweenService:Create(
 		ring,
