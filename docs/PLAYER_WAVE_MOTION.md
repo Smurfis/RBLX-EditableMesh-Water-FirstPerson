@@ -48,9 +48,10 @@ receive the swimming offset. The controller adds no camera roll or root rotation
 ## Riding a floating Part or boat
 
 `WaterPlatformRiderController.client.lua` handles the separate case where the
-player is physically standing on a tagged floating Part or Model. It reads the
-Humanoid's actual `FloorPart`, finds its `WaterInteractable` tag, and applies the
-platform's frame-to-frame CFrame delta to the local HumanoidRootPart. This makes
+player is physically standing on a tagged floating Part or Model. It finds the
+supporting Part using up to five downward raycasts around the character, resolves
+its `WaterInteractable` tag, and applies the platform's frame-to-frame CFrame delta
+to the local HumanoidRootPart. This makes
 the feet, body, and camera inherit vertical bobbing plus platform pitch, roll,
 and yaw. The player does not need another tag or attribute.
 

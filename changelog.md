@@ -1,6 +1,6 @@
 # Changelog — RBLX EditableMesh Water First Person
 
-Reconstructed development log for 9–10 September 2026 from the Git history of `Smurfis/RBLX-EditableMesh-Water-FirstPerson`, plus documented Studio-side changes.
+Development log for 9–10 September 2026 from the Git history of `Smurfis/RBLX-EditableMesh-Water-FirstPerson`, plus documented Studio-side changes. Updated from the 10 September development chat through splash-ring commit `0ca845a` and subsequent asset organisation on `water-gerstner-buoyancy-test`.
 
 The repository itself begins on 9 September 2026. Experiments before the first commit are not represented in Git history.
 
@@ -118,6 +118,8 @@ WaveFoamVFX
 
 ### Cartoony Water V1
 
+During the camera-angle investigation, `WaveFoamVFX` was made solid temporarily to remove visual tearing/clipping between water layers before final transparency and SurfaceAppearance tuning.
+
 A polished visual checkpoint was committed as `Cartoony water working v1`. The project had moved beyond the original realistic-water tutorial toward a stylized identity combining animated wave geometry, layered translucent water, bright intersection highlights, atmospheric horizon treatment, first-person swimming, and underwater depth presentation.
 
 ### Custom Water Footsteps
@@ -132,14 +134,14 @@ The player-following coastline effect was made less visually dominant with:
 EFFECT_OPACITY_MULTIPLIER = 0.55
 ```
 
-Further transparency tuning was performed manually in Studio on the Neon and upper visual layers.
+This runtime opacity change made the generated water's SurfaceAppearance changes easier to evaluate. The `__ClientCoastlineEffect` SurfaceAppearance settings themselves were unchanged. Further transparency tuning was performed manually in Studio on the Neon and upper visual layers. These Studio notes were also recorded in `e65d701` on `main` after this experiment branch's baseline.
 
 ### Wind Waker Surface Effect — First Successful Version
 
 A custom alpha-mask texture containing large irregular white cellular wave lines was added:
 
 ```text
-AlphaMaskOverlay/
+Imgs/AlphaMaskOverlay/
 └── WindWaker_WaveLines_01.png
 ```
 
@@ -167,6 +169,68 @@ Wind Waker wave-line mask
         + atmospheric horizon
 ```
 
+## 2026-09-10 — Shared Waves, Buoyancy and Player Tracking
+
+Work in this section is on `water-gerstner-buoyancy-test`, created from `b45789e`. The prototype remains separate from `main`.
+
+### Shared Wave Sampler / Gerstner Experiment
+
+`fd8fa03` extracted the existing wave field into `ReplicatedStorage.Modules.WaterWaveSampler`. The renderer and interaction controllers now share deterministic wave data and one time origin. This retained seed `1337`, 14 maximum octaves, exponential swell shaping, recursive sampling and horizontal choppiness, together with the existing renderer's mesh, layers, scheduling, LOD and far-water coverage. Queries expose height, displacement, position and a finite-difference normal.
+
+The Gerstner experiment uses the ocean's existing stylized wave implementation; it did not replace the wave field with a new textbook Gerstner formula. Floating objects sample those same waves, with profile-specific filtering.
+
+### Opt-In Buoyancy and Deformation
+
+- `d4fed6a` added smooth height following for Parts and Models tagged `WaterInteractable`; untagged geometry is untouched and Models require a `PrimaryPart`.
+- `3297f41` added smoothed pitch and roll with heading preservation and adjustable rotation strength.
+- `29008d9` added SmallProp, MediumProp, Boat and LargeShip profiles with 1/3/6/8 samples, filtered octave counts, update-rate limits and distance culling.
+- `7d2901a` added optional `WaterAllowHorizontalDrift` tuning; fixed X/Z remains the default.
+- `12269f9` added a separate `WaterDeformable` MeshPart experiment. It caches original vertices, creates a local runtime visual, samples the shared waves and guards EditableMesh creation failures while preserving the source mesh.
+
+These systems are local visual prototypes; their object positions are not server-authoritative boat physics.
+
+### Player Surface Motion and Tracking on Floating Parts
+
+`00b5d6d` added gentle player surface bobbing and body tilt through `PlayerWaveMotionController` and `PlayerWaveMotionState`. Swimming consumes the smoothed offset; response fades when surface hold ends. Sampling is capped at 30 Hz with six octaves, and height/tilt limits are centralised in `WaterConfig`.
+
+`a60f019` added player tracking/carry from the movement and rotation of supporting `WaterInteractable` platforms. The player follows their vertical movement, pitch, roll and yaw while standing on them. Follow-up fixes replaced unsupported Humanoid floor access with raycasts (`09967d1`), stabilised body tilt through a cached Motor6D base pose (`6e2e9c6`), and suppressed independent wave motion while riding to avoid applying wave movement twice (`44c236e`). `eba2507` expanded support detection to five points around the character to improve contact at platform edges and corners.
+
+Controller regression checks and Studio test guidance are included under `tests/` and [docs/PLAYER_WAVE_MOTION.md](docs/PLAYER_WAVE_MOTION.md).
+
+### Spawn Visual Cleanup
+
+`249e3bc` brought the spawn visual controller into source control and hardened cleanup: temporary body highlights become fully transparent, render callbacks disconnect, the authored SpawnLocation appearance is restored, and the final state is checked again on the next render frame.
+
+## 2026-09-10 — UI Changes and Replicated Splash Rings
+
+### Settings and First-Person HUD
+
+The settings/HUD work from `97bbb9f` through `3f2fdca` added the `ReplicatedStorage.UI.Checkbox` Rojo mapping, an animated scrollable settings panel, water-opacity and camera-sensitivity slider controls, and a compact keybind HUD option. Final controls use `SETTINGS: [=]` and `Free Mouse: [M]`, with tappable controls for mobile. Opening settings releases the cursor; closing it restores first-person lock.
+
+The HUD uses cartoon styling, a centred server identifier and a separate responsive top-right title/version/FPS group. FPS is capitalised and appears beside the version. Mouse initialisation and icon state were corrected: the icon is visible while locked, hidden while released, and a small centre reticle indicates first-person lock.
+
+The developer water-tuning panel introduced in `4e6f7c3` was reverted in `6e0ef29` at the user's request. Only removal of the Player Reflections option was retained; developer sliders and their renderer changes are not part of the final state.
+
+### Replicated Water-Contact Splash Rings
+
+`0ca845a` added local detection of downward crossings into the configured water-entry band and a server handler for splash requests. The server checks request type, distance from the player, proximity to the base water surface and a cooldown, then clones the Studio-authored `ReplicatedStorage.Shared.Assets.SplashRing` Part into Workspace. Rings expand to 2.5 times their starting size and fade over 0.7 seconds before cleanup, making the effect visible to other players. The Rojo project now maps `ServerScriptService`.
+
+This is replicated visual feedback at the configured base surface. It does not establish server authority for the separate buoyancy prototype.
+
+### Source Assets
+
+- Moved the unchanged wave-line texture to `Imgs/AlphaMaskOverlay/WindWaker_WaveLines_01.png`.
+- Added `Imgs/Decals/SpawnLocationDecal.png`.
+- Added audio source files `Sounds/Water-Splash-Entry.mp3` and `Sounds/Water-Surface-Idle.mp3`.
+
+These files are repository source assets; Studio-managed instances and uploaded asset IDs remain configured in Studio.
+
+### Validation and Open Testing Issue
+
+The development chat records successful Rojo builds/sourcemaps, Luau compilation and player-wave controller regression checks during implementation. Those checks do not prove visual parity, physics behaviour or multiplayer stability in Studio.
+
+The final chat investigation recorded `RBXCRASH: OutOfMemoryGraphics` and out-of-memory messages during Studio client/server testing. Graphics-memory pressure remains an open testing issue; no crash fix was committed. Single-client testing or lower Studio graphics quality was suggested for further investigation.
+
 ## Current State After Two Days
 
 The tutorial experiment has become a standalone first-person water project with:
@@ -186,6 +250,10 @@ The tutorial experiment has become a standalone first-person water project with:
 - layered stylized water rendering;
 - world-locked texture UVs;
 - Wind Waker-inspired cellular wave lines;
+- shared wave sampling, opt-in floating props and experimental mesh deformation;
+- gentle player wave motion and tracking on floating platforms;
+- animated settings, mobile keybind controls and a first-person status HUD;
+- server-replicated water-contact splash rings;
 - Studio-authored visual assets that survive Rojo synchronisation.
 
 The current goal is to make first-person water in Roblox feel more immersive, reactive, cinematic, and visually interesting than Roblox water by default.
@@ -197,10 +265,10 @@ These are future directions rather than completed features:
 - animate or distort the Wind Waker UV mask;
 - experiment with multiple moving wave-line frequencies;
 - improve shoreline behaviour around world geometry;
-- add splash and ripple particles;
+- extend the existing splash rings with splash and ripple particles;
 - add camera-level water droplets and surfacing effects;
-- add wave-aware buoyancy queries;
-- floating props and boat physics;
+- validate visual wave parity and refine the existing buoyancy queries;
+- develop server-authoritative boat physics beyond the local floating-prop prototype;
 - hull interaction and wake generation;
 - foam around moving objects;
 - stronger storm and ocean states;
