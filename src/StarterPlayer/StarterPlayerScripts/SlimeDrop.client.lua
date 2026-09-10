@@ -13,6 +13,7 @@ local wasInWater = false
 local mouse = player:GetMouse()
 local highlight: Highlight? = nil
 local trail: Trail? = nil
+local slimeRoot: BasePart? = nil
 
 if slime and slime:IsA("Model") then
 	highlight = Instance.new("Highlight")
@@ -27,6 +28,7 @@ if slime and slime:IsA("Model") then
 
 	local root = slime.PrimaryPart or slime:FindFirstChild("HumanoidRootPart", true)
 	if root and root:IsA("BasePart") then
+		slimeRoot = root
 		local top = Instance.new("Attachment")
 		top.Position = Vector3.new(0, root.Size.Y * 0.5, 0)
 		top.Parent = root
@@ -107,7 +109,10 @@ end
 RunService.RenderStepped:Connect(function()
 	if not highlight or not slime then return end
 	local target = mouse.Target
-	highlight.Enabled = target ~= nil and target:IsDescendantOf(slime)
+	local camera = workspace.CurrentCamera
+	local inRange = camera and slimeRoot
+		and (camera.CFrame.Position - slimeRoot.Position).Magnitude <= 10
+	highlight.Enabled = target ~= nil and target:IsDescendantOf(slime) and inRange == true
 end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)

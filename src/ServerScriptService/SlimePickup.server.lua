@@ -43,6 +43,7 @@ dropEvent.Parent = prompt
 
 local holder: Player? = nil
 local alignPos: AlignPosition? = nil
+local alignOri: AlignOrientation? = nil
 local itemAttachment: Attachment? = nil
 local holdAttachment: Attachment? = nil
 local deathConnection: RBXScriptConnection? = nil
@@ -50,6 +51,7 @@ local collisionStates: { [BasePart]: boolean } = {}
 
 local function dropItem()
 	if alignPos then alignPos:Destroy(); alignPos = nil end
+	if alignOri then alignOri:Destroy(); alignOri = nil end
 	if holdAttachment then holdAttachment:Destroy(); holdAttachment = nil end
 	if deathConnection then deathConnection:Disconnect(); deathConnection = nil end
 	if itemAttachment then itemAttachment:Destroy(); itemAttachment = nil end
@@ -107,8 +109,18 @@ prompt.Triggered:Connect(function(player)
 	alignPos.Attachment1 = holdAttachment
 	alignPos.MaxForce = 50000
 	alignPos.Responsiveness = 15
+	alignPos.ReactionForceEnabled = false
 	alignPos.Mode = Enum.PositionAlignmentMode.TwoAttachment
 	alignPos.Parent = root
+
+	alignOri = Instance.new("AlignOrientation")
+	alignOri.Attachment0 = itemAttachment
+	alignOri.Attachment1 = holdAttachment
+	alignOri.MaxTorque = 5000
+	alignOri.Responsiveness = 5
+	alignOri.ReactionTorqueEnabled = false
+	alignOri.Mode = Enum.OrientationAlignmentMode.TwoAttachment
+	alignOri.Parent = root
 
 	deathConnection = humanoid.Died:Connect(dropItem)
 end)
