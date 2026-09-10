@@ -21,6 +21,7 @@ item:SetAttribute("WaterProfile", "SmallProp")
 item:SetAttribute("WaterBuoyancyStrength", 1)
 item:SetAttribute("WaterRotationStrength", 1)
 item:SetAttribute("WaterEnabled", true)
+item:SetAttribute("WaterBuoyancyOnContact", true)
 
 if item:IsA("BasePart") then
 	item.Anchored = false

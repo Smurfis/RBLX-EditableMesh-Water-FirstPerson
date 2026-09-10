@@ -279,8 +279,16 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 	if not isEnabled(instance) then
 		return
 	end
-
 	local root = state.root
+	if instance:GetAttribute("WaterBuoyancyOnContact") == true
+		and instance:GetAttribute("WaterContacted") ~= true
+	then
+		if root.Position.Y > WaterConfig.GetSurfaceY() + 1 then
+			return
+		end
+		instance:SetAttribute("WaterContacted", true)
+	end
+
 	local horizontalDistance = (
 		Vector2.new(root.Position.X, root.Position.Z)
 		- Vector2.new(cameraPosition.X, cameraPosition.Z)
