@@ -903,6 +903,21 @@ local waveLinesMesh =
 		WATER_COASTLINE_TRANSPARENCY
 	)
 
+local function getLayerTransparency(attributeName: string, fallback: number): number
+	local override = waterFolder:GetAttribute(attributeName)
+	return if typeof(override) == "number" then math.clamp(override, 0, 1) else fallback
+end
+
+local function updateWaterLayerTransparency()
+	waterBaseMesh.Transparency = getLayerTransparency("WaterBaseTransparency", WATER_BASE_TRANSPARENCY)
+	waterMiddleMesh.Transparency = getLayerTransparency("WaterMiddleTransparency", WATER_MIDDLE_TRANSPARENCY)
+	waterMesh.Transparency = getLayerTransparency("WaterSurfaceTransparency", WATER_SURFACE_TRANSPARENCY)
+end
+
+for _, attributeName in {"WaterBaseTransparency", "WaterMiddleTransparency", "WaterSurfaceTransparency"} do
+	waterFolder:GetAttributeChangedSignal(attributeName):Connect(updateWaterLayerTransparency)
+end
+
 if HIDE_GENERATED_WAVELINES then
 	waveLinesMesh.Transparency = 1
 end
@@ -920,6 +935,7 @@ end
 waterFolder:GetAttributeChangedSignal("WaveFoamTransparencyOverride"):Connect(updateWaveFoamTransparency)
 
 updateWaveFoamTransparency()
+updateWaterLayerTransparency()
 
 -- Clone the preconfigured SurfaceAppearance ONLY onto the white upper
 -- layer. We intentionally do NOT assign ColorMap from this LocalScript

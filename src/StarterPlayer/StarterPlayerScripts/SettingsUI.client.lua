@@ -194,13 +194,49 @@ createToggle("RemoveCoastlineEffectToggle", "Remove CoastLine Effect", false, fu
 	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "Enabled", not removed)
 end)
 
-createToggle("TransparentOceanToggle", "Transparent Ocean", false, function(enabled)
-	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "Enabled", not enabled)
-end)
+local transparentWaterSliders: { Frame } = {}
+local transparentWaterEnabled = false
+local transparentWaterToggle: Checkbox.Checkbox?
 
-createSlider("WaveFoamTransparencySlider", "Wave foam transparency", 0, function(value)
-	setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "WaveFoamTransparencyOverride", value)
+local function addTransparentWaterSlider(name: string, labelText: string, defaultValue: number, attributeName: string): Frame
+	local frame = createSlider(name, labelText, defaultValue, function(value)
+		if transparentWaterEnabled then
+			setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", attributeName, value)
+		end
+	end)
+	frame.Visible = false
+	table.insert(transparentWaterSliders, frame)
+	return frame
+end
+
+transparentWaterToggle = Checkbox.new(scroll, "Enable Transparent Water", false, function(enabled)
+	transparentWaterEnabled = enabled
+	transparentWaterToggle.Label.Text = if enabled then "Disable Transparent Water" else "Enable Transparent Water"
+	for _, frame in transparentWaterSliders do
+		frame.Visible = enabled
+	end
+	setWorkspaceTransparencyAttribute("__ClientCoastlineEffect", "Enabled", not enabled)
+	if enabled then
+		setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "WaveFoamTransparencyOverride", 0.3)
+		setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "WaterSurfaceTransparency", 0.6)
+		setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "WaterMiddleTransparency", 0.8)
+		setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", "WaterBaseTransparency", 0.95)
+	else
+		local folder = workspace:FindFirstChild("__ClientRealisticWaterV4")
+		if folder then
+			folder:SetAttribute("WaveFoamTransparencyOverride", nil)
+			folder:SetAttribute("WaterSurfaceTransparency", nil)
+			folder:SetAttribute("WaterMiddleTransparency", nil)
+			folder:SetAttribute("WaterBaseTransparency", nil)
+		end
+	end
 end)
+transparentWaterToggle.Frame.Name = "TransparentOceanToggle"
+
+addTransparentWaterSlider("WaveFoamTransparencySlider", "WaveFoamVFX transparency", 0.3, "WaveFoamTransparencyOverride")
+addTransparentWaterSlider("WaterSurfaceTransparencySlider", "WaterSurface transparency", 0.6, "WaterSurfaceTransparency")
+addTransparentWaterSlider("WaterMiddleTransparencySlider", "WaterMiddle transparency", 0.8, "WaterMiddleTransparency")
+addTransparentWaterSlider("WaterBaseTransparencySlider", "WaterBase transparency", 0.95, "WaterBaseTransparency")
 
 local COASTLINE_MIN_TRANSPARENCY = 0.45
 
