@@ -36,6 +36,17 @@ Surface and underwater movement remain intentionally different:
 - Space and Ctrl remain world-vertical commands, independent of the character's current body rotation.
 - Directional input drives both target velocity and the head-first swim pose, while idle input smoothly returns the avatar to the neutral/treading pose.
 
+### Swimming Animation States
+
+`SwimmingController` now selects an animation from the same custom-water movement intent used by its physics:
+
+- idle swimming uses Roblox's default `SwimIdle` animation (`913389285`);
+- horizontal and shallow directional swimming uses Roblox's default forward `Swim` animation (`913384386`);
+- strong upward or downward movement keeps the project's previous animation (`507784897`);
+- setting the character's `IsDrowning` attribute to `true` also selects the previous animation, providing a direct hook for the CharacterAbilities state machine.
+
+All three tracks use movement priority, loop while selected and crossfade over 0.2 seconds. The tracks are loaded once on custom-water entry, switched without being recreated every frame, and stopped together on exit or character removal. Animation selection only presents the current swim state; it does not change velocity, buoyancy, orientation or the existing omnidirectional controls.
+
 ### Explicit Custom-Water Ownership
 
 The EditableMesh ocean still owns its own detection and physics. Entering custom water no longer forces `HumanoidStateType.Swimming`, because that state belongs to Roblox-recognised water and can cause the native CharacterAbilities/CCL water logic to compete with Spark's simulated surface.

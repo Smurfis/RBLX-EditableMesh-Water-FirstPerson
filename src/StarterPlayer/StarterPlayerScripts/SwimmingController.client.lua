@@ -134,6 +134,23 @@ local ENTRY_SPLASH_MIN_FALL_SPEED = 4
 -- ground clearly above the surface before another splash can play.
 local ENTRY_SPLASH_REARM_HEIGHT = 4
 
+local SWIM_IDLE_ANIMATION_ID =
+	"rbxassetid://913389285"
+
+local SWIM_FORWARD_ANIMATION_ID =
+	"rbxassetid://913384386"
+
+-- Preserve the animation previously used for every swim state as the
+-- stronger vertical/drowning motion.
+local SWIM_VERTICAL_ANIMATION_ID =
+	"rbxassetid://507784897"
+
+local SWIM_ANIMATION_FADE_TIME = 0.2
+
+local SWIM_ANIMATION_MOVEMENT_DEADZONE = 0.05
+
+local SWIM_ANIMATION_VERTICAL_THRESHOLD = 0.2
+
 
 ----------------------------------------------------------------
 -- GRADUATED EXIT SETTINGS
@@ -211,27 +228,128 @@ local SUBMERGED_EXIT_DEPTH =
 local humanoid: Humanoid? =
 	nil
 
-local swimAnimationTrack: AnimationTrack? = nil
+local swimIdleAnimationTrack: AnimationTrack? = nil
 
-local function setSwimAnimationEnabled(enabled: boolean)
-	local currentHumanoid = humanoid
-	if not currentHumanoid then return end
-	local animator = currentHumanoid:FindFirstChildOfClass("Animator")
-	if not animator then return end
-	if enabled then
-		if swimAnimationTrack and swimAnimationTrack.IsPlaying then return end
-		local animation = Instance.new("Animation")
-		animation.AnimationId = "rbxassetid://507784897"
-		swimAnimationTrack = animator:LoadAnimation(animation)
-		swimAnimationTrack.Priority = Enum.AnimationPriority.Movement
-		swimAnimationTrack.Looped = true
-		swimAnimationTrack:Play(0.2)
-	else
-		if swimAnimationTrack then
-			swimAnimationTrack:Stop(0.2)
-			swimAnimationTrack = nil
+local swimForwardAnimationTrack: AnimationTrack? = nil
+
+local swimVerticalAnimationTrack: AnimationTrack? = nil
+
+local activeSwimAnimationTrack: AnimationTrack? = nil
+
+local function loadSwimAnimationTrack(
+	animator: Animator,
+	animationId: string
+): AnimationTrack
+	local animation = Instance.new("Animation")
+	animation.AnimationId = animationId
+
+	local track = animator:LoadAnimation(animation)
+	track.Priority = Enum.AnimationPriority.Movement
+	track.Looped = true
+
+	animation:Destroy()
+
+	return track
+end
+
+local function stopSwimAnimations()
+	for _, track in {
+		swimIdleAnimationTrack,
+		swimForwardAnimationTrack,
+		swimVerticalAnimationTrack,
+	} do
+		if track then
+			track:Stop(SWIM_ANIMATION_FADE_TIME)
 		end
 	end
+
+	swimIdleAnimationTrack = nil
+	swimForwardAnimationTrack = nil
+	swimVerticalAnimationTrack = nil
+	activeSwimAnimationTrack = nil
+end
+
+local function setActiveSwimAnimation(
+	track: AnimationTrack?
+)
+	if not track or track == activeSwimAnimationTrack then
+		return
+	end
+
+	local previousTrack = activeSwimAnimationTrack
+	activeSwimAnimationTrack = track
+
+	track:Play(SWIM_ANIMATION_FADE_TIME)
+
+	if previousTrack then
+		previousTrack:Stop(SWIM_ANIMATION_FADE_TIME)
+	end
+end
+
+local function startSwimAnimations()
+	stopSwimAnimations()
+
+	local currentHumanoid = humanoid
+	if not currentHumanoid then
+		return
+	end
+
+	local animator = currentHumanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		return
+	end
+
+	swimIdleAnimationTrack = loadSwimAnimationTrack(
+		animator,
+		SWIM_IDLE_ANIMATION_ID
+	)
+
+	swimForwardAnimationTrack = loadSwimAnimationTrack(
+		animator,
+		SWIM_FORWARD_ANIMATION_ID
+	)
+
+	swimVerticalAnimationTrack = loadSwimAnimationTrack(
+		animator,
+		SWIM_VERTICAL_ANIMATION_ID
+	)
+
+	setActiveSwimAnimation(swimIdleAnimationTrack)
+end
+
+local function updateSwimAnimation(
+	swimDirection: Vector3
+)
+	local currentHumanoid = humanoid
+	local currentCharacter =
+		if currentHumanoid then currentHumanoid.Parent else nil
+
+	if
+		currentCharacter
+		and currentCharacter:IsA("Model")
+		and currentCharacter:GetAttribute("IsDrowning") == true
+	then
+		setActiveSwimAnimation(swimVerticalAnimationTrack)
+		return
+	end
+
+	if
+		math.abs(swimDirection.Y)
+		>= SWIM_ANIMATION_VERTICAL_THRESHOLD
+	then
+		setActiveSwimAnimation(swimVerticalAnimationTrack)
+		return
+	end
+
+	if
+		swimDirection.Magnitude
+		> SWIM_ANIMATION_MOVEMENT_DEADZONE
+	then
+		setActiveSwimAnimation(swimForwardAnimationTrack)
+		return
+	end
+
+	setActiveSwimAnimation(swimIdleAnimationTrack)
 end
 
 local rootPart: BasePart? =
@@ -1150,7 +1268,7 @@ local function enterSwimming()
 
 	takeCustomWaterCCLOwnership()
 
-	setSwimAnimationEnabled(true)
+	startSwimAnimations()
 
 	-- Fresh cycle - any leftover post-exit coast-out is no longer
 	-- relevant once we're actively swimming again.
@@ -1231,7 +1349,7 @@ local function exitSwimming()
 
 	releaseCustomWaterCCLOwnership()
 
-	setSwimAnimationEnabled(false)
+	stopSwimAnimations()
 
 
 	local orientation =
@@ -2352,6 +2470,8 @@ local function updateSwimming(
 		surfaceDirectionalSwimDirection =
 		getOmnidirectionalSwimDirection()
 
+	updateSwimAnimation(swimDirection)
+
 
 	-- Horizontal and vertical speeds remain independently tunable.
 	--
@@ -2553,6 +2673,8 @@ player.CharacterAdded:Connect(
 
 
 player.CharacterRemoving:Connect(function()
+	stopSwimAnimations()
+
 	setCustomWaterAttributes(
 		false,
 		false
