@@ -104,6 +104,65 @@ The snapshot/restore handoff is equally important. CharacterAbilities may add or
 - Restore captured CCL settings and controller ownership when custom swimming ends.
 - Preserve the graduated surface exit, horizontal surface behavior, full 3D underwater movement and explicit world-up/world-down controls.
 
+### Boat / WaterInteraction Integration — In-Game Validation
+
+The first actual boat Model has now been integrated with the custom EditableMesh ocean through the existing `WaterInteractable` buoyancy system. The boat was configured and validated inside the Roblox place; its physical Model and tuned Studio properties are recorded here even though the asset itself is not represented as a new Rojo source file.
+
+The codebase already contained most of the required boat buoyancy infrastructure, so the initial result was confusing: from the code's perspective the system looked substantially complete, while from the player's perspective:
+
+> Boat no move.
+
+The missing behavior was primarily a Model setup and root-resolution problem, made harder to identify by limited runtime feedback. It was not evidence that a second boat-specific buoyancy implementation was required.
+
+#### Milestone Result
+
+The tested one-player boat can now:
+
+- opt into water behavior through the `WaterInteractable` CollectionService tag;
+- sample the exact shared wave field rendered by the custom ocean;
+- bob vertically with the averaged wave height;
+- pitch from the difference between front and rear samples;
+- roll from the difference between port and starboard samples;
+- move as one complete Model while retaining its internal hierarchy;
+- retain its welded rigid assembly;
+- sit at a tuned visual waterline;
+- reduce excessive wave following so the rendered surface does not repeatedly clip through the hull.
+
+This milestone establishes that the boat visually floats on the same ocean as the rest of the project. Propulsion, final steering forces and server-authoritative/networked boat buoyancy remain later systems.
+
+#### Why the Existing System Supports Boats
+
+`ReplicatedStorage.Modules.WaterWaveSampler` is the common source for both the rendered EditableMesh and water-interactable objects. `WaterInteractionController.client.lua` already defines a `Boat` profile with six hull samples, six wave octaves and a 30 Hz sample rate. The six points cover front-left, front-right, middle-left, middle-right, rear-left and rear-right positions derived from the Model extents.
+
+The controller averages those samples for vertical placement and compares front/rear and left/right heights for pitch and roll. It then smooths the target position and rotation independently, preserves the original yaw, and moves the complete Model through `Model:PivotTo()`. Horizontal wave drift stays disabled unless `WaterAllowHorizontalDrift` is explicitly enabled.
+
+#### Root Resolution Was the Critical Setup Step
+
+The `WaterInteractable` tag must be placed on the complete boat Model, and that Model must resolve a stable controlled root. The controller first uses `Model.PrimaryPart`; its only fallback is a descendant named `HumanoidRootPart`, which ordinary boat Models do not normally contain.
+
+For a boat, assign `PrimaryPart` to a suitable hull/root `BasePart` before expecting any visible response. The remaining boat pieces must form the intended welded rigid assembly around that root. Attributes can look correct while the boat remains stationary if the tagged Model has no resolvable root, because it never becomes an active interactable state.
+
+The root also establishes the boat's starting height, preserved heading, sample frame and smoothing state. Choosing it deliberately gives later ship variants a predictable pivot and avoids relying on whichever descendant happens to appear first.
+
+#### Boat Setup Blueprint
+
+For future boats and larger ships:
+
+1. keep the complete boat as a Model and assign a stable hull/root `PrimaryPart`;
+2. weld the intended moving pieces into one coherent assembly;
+3. add the `WaterInteractable` tag to that top-level Model;
+4. set `WaterProfile` to `Boat` for the six-point hull response;
+5. tune `WaterVerticalOffset` to place the hull at its authored waterline;
+6. tune `WaterBuoyancyStrength` and `WaterRotationStrength` to prevent overreaction and visible surface clipping;
+7. leave `WaterAllowHorizontalDrift` disabled unless wave-driven X/Z drift is deliberately wanted;
+8. use `WaterEnabled` for an explicit runtime toggle and `WaterSampleCount` only for controlled experiments;
+9. keep the boat within the controller's 500-stud local update range while validating it;
+10. confirm the tag is applied to the same Model whose `PrimaryPart` and attributes are being inspected.
+
+If a future boat appears inert, validate the tag target, `PrimaryPart`, root ancestry, profile name, enabled state and camera distance before changing wave mathematics or creating more buoyancy code.
+
+This remains a local visual/gameplay prototype. `WaterInteractionController` moves the Model on the client and does not establish server authority. The separate `BoatController` and helm IK systems can present a working wheel, but propulsion and authoritative steering motion must be designed as their own later milestone.
+
 ### Central Boat and Helm Controller
 
 Boat steering is now sourced from the repository rather than requiring a separate steering script inside each Studio boat model.
