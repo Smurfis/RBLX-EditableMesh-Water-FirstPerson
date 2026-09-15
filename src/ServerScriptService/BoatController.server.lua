@@ -6,7 +6,7 @@
 -- Each direct child Model is expected to contain:
 --   * a VehicleSeat named BoatSeat;
 --   * a BasePart named Handle;
---   * a HingeConstraint beneath Handle.
+--   * a HingeConstraint beneath either the boat or Handle.
 
 local Workspace = game:GetService("Workspace")
 
@@ -54,6 +54,22 @@ end
 local function findHelmHinge(
 	boat: Model
 ): HingeConstraint?
+	-- The original in-boat script used script.Parent.HingeConstraint, so
+	-- prefer a specifically named hinge anywhere beneath the boat model.
+	local namedHinge =
+		boat:FindFirstChild(
+			"HingeConstraint",
+			true
+		)
+
+	if
+		namedHinge
+		and namedHinge:IsA("HingeConstraint")
+	then
+		return namedHinge
+	end
+
+	-- Also support helm imports that keep the constraint beneath Handle.
 	local handle =
 		boat:FindFirstChild(
 			HELM_HANDLE_NAME,

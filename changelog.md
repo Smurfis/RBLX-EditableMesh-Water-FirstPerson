@@ -105,13 +105,15 @@ Workspace
    └─ <Boat Model>
       ├─ BoatSeat (VehicleSeat)
       └─ <Helm Model or Folder>
+         ├─ HingeConstraint
          └─ Handle (BasePart)
-            ├─ HingeConstraint
             ├─ LeftAttachment
             └─ RightAttachment
 ```
 
-Each boat must be a direct child Model of `Workspace.Boats`. `BoatSeat`, the helm model and `Handle` may be nested within that boat. The controller discovers `BoatSeat` and `Handle` recursively, then maps `BoatSeat.SteerFloat` to the helm hinge's `TargetAngle`.
+Each boat must be a direct child Model of `Workspace.Boats`. `BoatSeat`, the helm model, `HingeConstraint` and `Handle` may be nested within that boat. The controller discovers the named hinge recursively, with an additional fallback for imports that place a hinge beneath `Handle`, then maps `BoatSeat.SteerFloat` to the helm hinge's `TargetAngle`.
+
+This replaces the former per-boat snippet that read `script.Parent.VehicleSeat` and `script.Parent.HingeConstraint`. The original pasted `script.parent` spelling would fail because Roblox property names are case-sensitive; the centralized controller no longer depends on the script being parented inside the boat at all.
 
 The default maximum helm angle is 45 degrees. A numeric `HelmMaxAngle` attribute on `BoatSeat`, or on the boat model as a fallback, can override it per boat without duplicating scripts.
 
