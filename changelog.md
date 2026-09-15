@@ -128,6 +128,12 @@ The controller binds every existing boat and listens for boats added or removed 
 
 Ordinary seats no longer qualify merely because their immediate parent contains something named `Handle`. Leaving the boat, entering a non-boat seat or encountering an incomplete helm clears both IK targets cleanly.
 
+#### Studio Validation — Passed
+
+Live Studio testing confirmed that a `BoatSeat` beneath `Workspace.Boats` is discovered, the hand IK holds the helm attachments, and changes to `SteerFloat` rotate the helm's `HingeConstraint` through the configured 45-degree range. The helm `Handle` may be either a `MeshPart` or a `Part`, since both inherit from `BasePart`.
+
+The initial report that the helm was not steering was retracted after observing it in motion, so the steering implementation required no further correction.
+
 ### Spark Intro Iteration — Isolated Place, Pending Import
 
 A new Spark/Fairy intro iteration was created on 14 September 2026 in a separate Roblox place used for isolated development. It has not yet been imported into this repository or its current Rojo project, so it is recorded here as completed external prototype work pending integration rather than current project behavior.
