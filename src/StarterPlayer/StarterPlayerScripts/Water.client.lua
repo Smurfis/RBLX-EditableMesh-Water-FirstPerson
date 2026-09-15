@@ -256,7 +256,7 @@ local COLOR_STEPS = 48
 -- It moves on the same grid as the detailed mesh and never follows camera
 -- rotation, preventing the dark fill from sliding beneath transparent water.
 
-local FAR_FILL_ENABLED = true
+local FAR_FILL_ENABLED = false -- turned off recently if its just four base parts dont need it rn it just doesnt appear even on high render
 
 -- The ring reaches 4,500 studs from its center in each direction, matching
 -- the previous 9,000 x 9,000 coverage area.

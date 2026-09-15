@@ -41,6 +41,13 @@
 --
 --     Both ramps start at the foam band's upper edge so there's no seam/pop
 --     where one hands off to the other.
+--
+-- CCL INTENT BRIDGE (added):
+--   * ControllerManager.MovingDirection supplies movement intent.
+--   * Existing local camera LookVector supplies full 3D look intent.
+--   * Native CCL physics is neutralized only while custom water owns motion.
+--   * We DO NOT force HumanoidStateType.Swimming for EditableMesh water.
+--   * Character attributes IsSwimming / IsSubmerged describe custom water.
 
 
 local Players =
@@ -58,6 +65,10 @@ local ReplicatedStorage =
 local Workspace =
 	game:GetService("Workspace")
 
+
+-- CCL supplies movement intent through ControllerManager.MovingDirection.
+-- The existing local camera LookVector supplies full 3D pitch/yaw intent.
+-- Our EditableMesh ocean still owns the actual swimming physics.
 
 local WaterConfig =
 	require(
@@ -168,6 +179,32 @@ local BUOYANCY_RELEASE_END_Y =
 
 
 ----------------------------------------------------------------
+-- SWIM ORIENTATION SETTINGS
+----------------------------------------------------------------
+
+-- AlignOrientation gives the physical character a smooth response rather
+-- than snapping the root to a new CFrame every frame.
+local SWIM_ORIENTATION_RESPONSIVENESS =
+	12
+
+local SWIM_DIRECTION_DEADZONE =
+	0.05
+
+
+----------------------------------------------------------------
+-- CUSTOM WATER STATE SETTINGS
+----------------------------------------------------------------
+
+-- IsSubmerged deliberately uses hysteresis so Gerstner-wave motion and
+-- surface bobbing cannot flick the attribute on/off every frame.
+local SUBMERGED_ENTER_DEPTH =
+	1.5
+
+local SUBMERGED_EXIT_DEPTH =
+	1.0
+
+
+----------------------------------------------------------------
 -- CHARACTER STATE
 ----------------------------------------------------------------
 
@@ -206,6 +243,51 @@ local swimAttachment: Attachment? =
 
 local buoyancyForce: VectorForce? =
 	nil
+
+local swimOrientation: AlignOrientation? =
+	nil
+
+local humanoidAutoRotateBeforeSwimming: boolean? =
+	nil
+
+
+local characterModel: Model? =
+	nil
+
+
+----------------------------------------------------------------
+-- CHARACTER CONTROLLER LIBRARY STATE
+----------------------------------------------------------------
+
+local controllerManager: ControllerManager? =
+	nil
+
+local airController: AirController? =
+	nil
+
+local groundController: GroundController? =
+	nil
+
+local activeControllerBeforeSwimming: ControllerBase? =
+	nil
+
+type AirControllerState = {
+	MoveMaxForce: number,
+	TurnMaxTorque: number,
+	BalanceMaxTorque: number,
+	BalanceSpeed: number,
+	TurnSpeedFactor: number,
+	BalanceRigidityEnabled: boolean,
+	MaintainLinearMomentum: boolean,
+	MaintainAngularMomentum: boolean,
+}
+
+local airControllerStateBeforeSwimming: AirControllerState? =
+	nil
+
+
+local lastSurfaceSwimFacingDirection =
+	Vector3.new(0, 0, -1)
 
 local entrySplashSound: Sound? =
 	nil
@@ -283,9 +365,9 @@ local function suppressDefaultSplash(
 		instance.Name ~= "Splash"
 		or (
 			not instance:IsA("Sound")
-			and not instance:IsA("AudioPlayer")
+				and not instance:IsA("AudioPlayer")
 		)
-		or mutedDefaultSplashes[instance]
+			or mutedDefaultSplashes[instance]
 	then
 		return
 	end
@@ -671,6 +753,374 @@ end
 
 
 ----------------------------------------------------------------
+-- CUSTOM WATER / CCL OWNERSHIP
+----------------------------------------------------------------
+
+local function setCustomWaterAttributes(
+	isSwimming: boolean,
+	isSubmerged: boolean
+)
+	local currentCharacter =
+		characterModel
+
+	if not currentCharacter then
+		return
+	end
+
+	currentCharacter:SetAttribute(
+		"IsSwimming",
+		isSwimming
+	)
+
+	currentCharacter:SetAttribute(
+		"IsSubmerged",
+		isSubmerged
+	)
+end
+
+
+local function updateSubmergedAttribute(
+	surfaceY: number,
+	rootY: number
+)
+	local currentCharacter =
+		characterModel
+
+	if not currentCharacter then
+		return
+	end
+
+	if not bodyInWater then
+		if currentCharacter:GetAttribute("IsSubmerged") == true then
+			currentCharacter:SetAttribute(
+				"IsSubmerged",
+				false
+			)
+		end
+
+		return
+	end
+
+	local depthBelowSurface =
+		surfaceY - rootY
+
+	local currentlySubmerged =
+		currentCharacter:GetAttribute(
+			"IsSubmerged"
+		) == true
+
+	if not currentlySubmerged then
+		if depthBelowSurface >= SUBMERGED_ENTER_DEPTH then
+			currentCharacter:SetAttribute(
+				"IsSubmerged",
+				true
+			)
+		end
+
+	elseif depthBelowSurface <= SUBMERGED_EXIT_DEPTH then
+		currentCharacter:SetAttribute(
+			"IsSubmerged",
+			false
+		)
+	end
+end
+
+
+local function findControllerManager(
+	character: Model,
+	currentHumanoid: Humanoid
+): ControllerManager?
+	-- Roblox's CCL hierarchy has changed during the beta. The documented
+	-- layout places ControllerManager on the character, while some generated
+	-- rigs/builds have exposed it beneath the Humanoid. Support both.
+	local deadline =
+		time() + 5
+
+	repeat
+		local fromCharacter =
+			character:FindFirstChildOfClass(
+				"ControllerManager"
+			)
+
+		if fromCharacter then
+			return fromCharacter
+		end
+
+		local fromHumanoid =
+			currentHumanoid:FindFirstChildOfClass(
+				"ControllerManager"
+			)
+
+		if fromHumanoid then
+			return fromHumanoid
+		end
+
+		task.wait()
+	until
+	not character.Parent
+		or time() >= deadline
+
+	return nil
+end
+
+
+local function captureCCLReferences(
+	character: Model,
+	currentHumanoid: Humanoid
+)
+	controllerManager =
+		findControllerManager(
+			character,
+			currentHumanoid
+		)
+
+	local currentControllerManager =
+		controllerManager
+
+	if currentControllerManager then
+		airController =
+			currentControllerManager:FindFirstChildOfClass(
+				"AirController"
+			)
+
+		groundController =
+			currentControllerManager:FindFirstChildOfClass(
+				"GroundController"
+			)
+	else
+		airController =
+			nil
+
+		groundController =
+			nil
+	end
+
+	if not controllerManager then
+		warn(
+			"[SwimmingController] CCL ControllerManager was not found; using legacy movement fallbacks."
+		)
+	end
+end
+
+
+local function takeCustomWaterCCLOwnership()
+	local currentControllerManager =
+		controllerManager
+
+	local currentAirController =
+		airController
+
+	if
+		not currentControllerManager
+		or not currentAirController
+	then
+		return
+	end
+
+	activeControllerBeforeSwimming =
+		currentControllerManager.ActiveController
+
+	airControllerStateBeforeSwimming = {
+		MoveMaxForce =
+			currentAirController.MoveMaxForce,
+
+		TurnMaxTorque =
+			currentAirController.TurnMaxTorque,
+
+		BalanceMaxTorque =
+			currentAirController.BalanceMaxTorque,
+
+		BalanceSpeed =
+			currentAirController.BalanceSpeed,
+
+		TurnSpeedFactor =
+			currentAirController.TurnSpeedFactor,
+
+		BalanceRigidityEnabled =
+			currentAirController.BalanceRigidityEnabled,
+
+		MaintainLinearMomentum =
+			currentAirController.MaintainLinearMomentum,
+
+		MaintainAngularMomentum =
+			currentAirController.MaintainAngularMomentum,
+	}
+
+	-- Our EditableMesh ocean owns velocity, buoyancy and orientation.
+	-- The CCL remains alive purely as an INPUT/SENSOR source.
+	currentAirController.MoveMaxForce =
+		0
+
+	currentAirController.TurnMaxTorque =
+		0
+
+	currentAirController.BalanceMaxTorque =
+		0
+
+	currentAirController.TurnSpeedFactor =
+		0
+
+	currentAirController.BalanceRigidityEnabled =
+		false
+
+	currentAirController.MaintainLinearMomentum =
+		false
+
+	currentAirController.MaintainAngularMomentum =
+		false
+
+	currentControllerManager.ActiveController =
+		currentAirController
+end
+
+
+local function maintainCustomWaterCCLOwnership()
+	if not bodyInWater then
+		return
+	end
+
+	local currentControllerManager =
+		controllerManager
+
+	local currentAirController =
+		airController
+
+	if
+		not currentControllerManager
+		or not currentAirController
+	then
+		return
+	end
+
+	-- Built-in abilities can select controllers during their own updates.
+	-- Reassert the neutral AirController while custom water owns locomotion.
+	currentControllerManager.ActiveController =
+		currentAirController
+
+	currentAirController.MoveMaxForce =
+		0
+
+	currentAirController.TurnMaxTorque =
+		0
+
+	currentAirController.BalanceMaxTorque =
+		0
+
+	currentAirController.TurnSpeedFactor =
+		0
+
+	currentAirController.BalanceRigidityEnabled =
+		false
+
+	currentAirController.MaintainLinearMomentum =
+		false
+
+	currentAirController.MaintainAngularMomentum =
+		false
+end
+
+
+local function releaseCustomWaterCCLOwnership()
+	local currentControllerManager =
+		controllerManager
+
+	local currentAirController =
+		airController
+
+	local savedAirControllerState =
+		airControllerStateBeforeSwimming
+
+	if
+		currentAirController
+		and savedAirControllerState
+	then
+		currentAirController.MoveMaxForce =
+			savedAirControllerState.MoveMaxForce
+
+		currentAirController.TurnMaxTorque =
+			savedAirControllerState.TurnMaxTorque
+
+		currentAirController.BalanceMaxTorque =
+			savedAirControllerState.BalanceMaxTorque
+
+		currentAirController.BalanceSpeed =
+			savedAirControllerState.BalanceSpeed
+
+		currentAirController.TurnSpeedFactor =
+			savedAirControllerState.TurnSpeedFactor
+
+		currentAirController.BalanceRigidityEnabled =
+			savedAirControllerState.BalanceRigidityEnabled
+
+		currentAirController.MaintainLinearMomentum =
+			savedAirControllerState.MaintainLinearMomentum
+
+		currentAirController.MaintainAngularMomentum =
+			savedAirControllerState.MaintainAngularMomentum
+	end
+
+	airControllerStateBeforeSwimming =
+		nil
+
+
+	if currentControllerManager then
+		local currentGroundController =
+			groundController
+
+		local groundSensor =
+			currentControllerManager.GroundSensor
+
+		local groundIsSensed =
+			false
+
+		if
+			groundSensor
+			and groundSensor:IsA("ControllerPartSensor")
+		then
+			groundIsSensed =
+				groundSensor.SensedPart ~= nil
+		end
+
+		-- If we have already reached a floor/beach, hand directly to ground.
+		-- Otherwise restore whichever controller was active before custom water
+		-- took ownership; normal CCL abilities can then choose again next frame.
+		if
+			groundIsSensed
+			and currentGroundController
+		then
+			currentControllerManager.ActiveController =
+				currentGroundController
+
+		elseif
+			activeControllerBeforeSwimming
+			and activeControllerBeforeSwimming.Parent
+		then
+			currentControllerManager.ActiveController =
+				activeControllerBeforeSwimming
+		end
+	end
+
+	activeControllerBeforeSwimming =
+		nil
+end
+
+
+local function getCCLMoveDirection(
+	currentHumanoid: Humanoid
+): Vector3
+	local currentControllerManager =
+		controllerManager
+
+	if currentControllerManager then
+		return currentControllerManager.MovingDirection
+	end
+
+	-- Legacy fallback if CCL is absent/late during character creation.
+	return currentHumanoid.MoveDirection
+end
+
+
+----------------------------------------------------------------
 -- ENTER / EXIT WATER
 ----------------------------------------------------------------
 
@@ -692,6 +1142,14 @@ local function enterSwimming()
 
 	bodyInWater =
 		true
+
+	setCustomWaterAttributes(
+		true,
+		false
+	)
+
+	takeCustomWaterCCLOwnership()
+
 	setSwimAnimationEnabled(true)
 
 	-- Fresh cycle - any leftover post-exit coast-out is no longer
@@ -722,9 +1180,36 @@ local function enterSwimming()
 
 	if currentHumanoid then
 
-		currentHumanoid:ChangeState(
-			Enum.HumanoidStateType.Swimming
-		)
+		humanoidAutoRotateBeforeSwimming =
+			currentHumanoid.AutoRotate
+
+		currentHumanoid.AutoRotate =
+			false
+
+
+		local orientation =
+			swimOrientation
+
+		local currentRootForOrientation =
+			rootPart
+
+		if
+			orientation
+			and currentRootForOrientation
+		then
+
+			orientation.CFrame =
+				currentRootForOrientation.CFrame.Rotation
+
+			orientation.Enabled =
+				true
+		end
+
+
+		-- IMPORTANT:
+		-- Do NOT call Humanoid:ChangeState(Swimming) here. This is not
+		-- Roblox/Terrain water. Native CCL Water/WaterSurface sensing remains
+		-- free to identify real Roblox water; our ocean uses IsSwimming instead.
 	end
 end
 
@@ -738,7 +1223,42 @@ local function exitSwimming()
 
 	bodyInWater =
 		false
+
+	setCustomWaterAttributes(
+		false,
+		false
+	)
+
+	releaseCustomWaterCCLOwnership()
+
 	setSwimAnimationEnabled(false)
+
+
+	local orientation =
+		swimOrientation
+
+	if orientation then
+
+		orientation.Enabled =
+			false
+	end
+
+
+	local currentHumanoid =
+		humanoid
+
+	if
+		currentHumanoid
+		and humanoidAutoRotateBeforeSwimming ~= nil
+	then
+
+		currentHumanoid.AutoRotate =
+			humanoidAutoRotateBeforeSwimming
+	end
+
+	humanoidAutoRotateBeforeSwimming =
+		nil
+
 
 	-- Preserve the exit handoff until buoyancy has reached zero. Keeping
 	-- this state separate prevents buoyancy from affecting a new fall.
@@ -784,6 +1304,14 @@ end
 local function setupCharacter(
 	character: Model
 )
+	characterModel =
+		character
+
+	setCustomWaterAttributes(
+		false,
+		false
+	)
+
 	disconnectDefaultSplashSuppression()
 	entrySplashSound = nil
 	entrySplashArmed = true
@@ -814,6 +1342,23 @@ local function setupCharacter(
 			foundRoot
 	else
 		rootPart =
+			nil
+	end
+
+
+	if foundHumanoid:IsA("Humanoid") then
+		captureCCLReferences(
+			character,
+			foundHumanoid
+		)
+	else
+		controllerManager =
+			nil
+
+		airController =
+			nil
+
+		groundController =
 			nil
 	end
 
@@ -888,6 +1433,70 @@ local function setupCharacter(
 			attachment
 
 
+		------------------------------------------------------------
+		-- CREATE SWIM ORIENTATION ACTUATOR
+		------------------------------------------------------------
+
+		local oldOrientation =
+			currentRoot:FindFirstChild(
+				"WaterSwimOrientation"
+			)
+
+		if oldOrientation then
+			oldOrientation:Destroy()
+		end
+
+
+		local orientation =
+			Instance.new(
+				"AlignOrientation"
+			)
+
+		orientation.Name =
+			"WaterSwimOrientation"
+
+		orientation.Mode =
+			Enum.OrientationAlignmentMode.OneAttachment
+
+		orientation.Attachment0 =
+			attachment
+
+		orientation.RigidityEnabled =
+			false
+
+		orientation.Responsiveness =
+			SWIM_ORIENTATION_RESPONSIVENESS
+
+		orientation.MaxTorque =
+			math.huge
+
+		orientation.MaxAngularVelocity =
+			math.huge
+
+		orientation.Enabled =
+			false
+
+		orientation.Parent =
+			currentRoot
+
+		swimOrientation =
+			orientation
+
+
+		local initialFlatLook =
+			Vector3.new(
+				currentRoot.CFrame.LookVector.X,
+				0,
+				currentRoot.CFrame.LookVector.Z
+			)
+
+		if initialFlatLook.Magnitude > 0.001 then
+
+			lastSurfaceSwimFacingDirection =
+				initialFlatLook.Unit
+		end
+
+
 		local force =
 			Instance.new("VectorForce")
 
@@ -926,26 +1535,22 @@ end
 -- OMNIDIRECTIONAL SWIMMING
 ----------------------------------------------------------------
 
-local function getOmnidirectionalSwimDirection(): Vector3
+local function getOmnidirectionalSwimDirection(): (Vector3, Vector3, Vector3)
 
 	local camera =
 		Workspace.CurrentCamera
 
-
 	local currentHumanoid =
 		humanoid
 
-
 	local currentRoot =
 		rootPart
-
 
 	if
 		not camera
 		or not currentHumanoid
 	then
-
-		return Vector3.zero
+		return Vector3.zero, Vector3.zero, Vector3.zero
 	end
 
 
@@ -953,34 +1558,42 @@ local function getOmnidirectionalSwimDirection(): Vector3
 	-- GET ROBLOX MOVEMENT INPUT
 	----------------------------------------------------------------
 
-	-- Humanoid.MoveDirection gives us the player's normal WASD
-	-- movement intent in world space.
-	--
-	-- Roblox normally flattens movement against the ground,
-	-- so below we recover how much of that intent represents
-	-- forwards/backwards and left/right relative to the camera.
-
 	local moveDirection =
-		currentHumanoid.MoveDirection
+		getCCLMoveDirection(
+			currentHumanoid
+		)
 
 
 	----------------------------------------------------------------
 	-- CAMERA BASIS
 	----------------------------------------------------------------
 
+	-- CCL MovingDirection gives us movement intent, but we deliberately keep
+	-- the OLD full camera LookVector for pitch. FacingDirection is not the
+	-- right source for head-first up/down swimming.
+	local trackedLookVector =
+		player:GetAttribute(
+			"LooKVector"
+		)
+
 	local cameraLook =
 		camera.CFrame.LookVector
 
+	if
+		typeof(trackedLookVector) == "Vector3"
+		and trackedLookVector.Magnitude > 0.001
+	then
+		cameraLook =
+			trackedLookVector.Unit
+	end
 
 	local cameraRight =
 		camera.CFrame.RightVector
 
 
-	-- Flat camera vectors are used ONLY to determine what WASD
-	-- input the player is providing.
-	--
-	-- Actual swimming uses the full cameraLook afterward.
-
+	-- Flat camera vectors are used only to work out what W/A/S/D
+	-- the player is providing. Forward swimming itself still uses the
+	-- COMPLETE camera LookVector, including pitch.
 	local flatForward =
 		Vector3.new(
 			cameraLook.X,
@@ -988,6 +1601,25 @@ local function getOmnidirectionalSwimDirection(): Vector3
 			cameraLook.Z
 		)
 
+	-- If the camera is almost directly above/below the player, LookVector
+	-- has almost no horizontal component. Camera UpVector still gives us
+	-- the direction corresponding to the top of the screen, which keeps
+	-- camera-relative A/D/W/S interpretation stable.
+	if
+		flatForward.Magnitude
+		<= 0.001
+	then
+
+		local cameraUp =
+			camera.CFrame.UpVector
+
+		flatForward =
+			Vector3.new(
+				cameraUp.X,
+				0,
+				cameraUp.Z
+			)
+	end
 
 	if
 		flatForward.Magnitude
@@ -999,7 +1631,6 @@ local function getOmnidirectionalSwimDirection(): Vector3
 			local rootLook =
 				currentRoot.CFrame.LookVector
 
-
 			flatForward =
 				Vector3.new(
 					rootLook.X,
@@ -1008,7 +1639,6 @@ local function getOmnidirectionalSwimDirection(): Vector3
 				)
 		end
 	end
-
 
 	if
 		flatForward.Magnitude
@@ -1036,7 +1666,6 @@ local function getOmnidirectionalSwimDirection(): Vector3
 			cameraRight.Z
 		)
 
-
 	if
 		flatRight.Magnitude
 		<= 0.001
@@ -1063,10 +1692,8 @@ local function getOmnidirectionalSwimDirection(): Vector3
 	local forwardAmount =
 		0
 
-
 	local rightAmount =
 		0
-
 
 	if
 		moveDirection.Magnitude
@@ -1078,11 +1705,54 @@ local function getOmnidirectionalSwimDirection(): Vector3
 				flatForward
 			)
 
-
 		rightAmount =
 			moveDirection:Dot(
 				flatRight
 			)
+	end
+
+
+	----------------------------------------------------------------
+	-- DIRECTIONAL SWIM VECTOR
+	----------------------------------------------------------------
+
+	-- Underwater, W/S use the complete camera LookVector, so the player
+	-- can naturally pitch into dives and climbs. A/D remain horizontal
+	-- camera-relative strafing inputs and contribute to the final heading.
+	local directionalSwimDirection =
+		cameraLook
+		* forwardAmount
+
+		+ flatRight
+		* rightAmount
+
+	if directionalSwimDirection.Magnitude > 1 then
+
+		directionalSwimDirection =
+			directionalSwimDirection.Unit
+	end
+
+
+	----------------------------------------------------------------
+	-- SURFACE ORIENTATION VECTOR
+	----------------------------------------------------------------
+
+	-- ControllerManager.MovingDirection is Roblox CCL's desired movement
+	-- direction in world space. Flattening it gives us a very stable
+	-- surface heading, including when the camera is nearly directly above
+	-- the swimmer. This affects BODY ORIENTATION ONLY; the actual swim
+	-- physics below remain unchanged.
+	local surfaceDirectionalSwimDirection =
+		Vector3.new(
+			moveDirection.X,
+			0,
+			moveDirection.Z
+		)
+
+	if surfaceDirectionalSwimDirection.Magnitude > 1 then
+
+		surfaceDirectionalSwimDirection =
+			surfaceDirectionalSwimDirection.Unit
 	end
 
 
@@ -1093,46 +1763,27 @@ local function getOmnidirectionalSwimDirection(): Vector3
 	local verticalAmount =
 		0
 
-
 	if swimUpHeld then
-		verticalAmount +=
-			1
+		verticalAmount += 1
 	end
-
 
 	if swimDownHeld then
-		verticalAmount -=
-			1
+		verticalAmount -= 1
 	end
 
 
 	----------------------------------------------------------------
-	-- BUILD ONE 3D MOVEMENT VECTOR
+	-- FINAL PHYSICAL SWIM VECTOR
 	----------------------------------------------------------------
 
-	-- W/S:
-	-- full camera LookVector
-	--
-	-- A/D:
-	-- horizontal camera RightVector
-	--
-	-- Space/Ctrl:
-	-- global vertical axis
-
+	-- Space/Ctrl remain WORLD-VERTICAL movement. Character orientation
+	-- never feeds back into this vector, so rotating/spinning the avatar
+	-- cannot bend an explicit ascent or descent.
 	local desired =
-		cameraLook
-		* forwardAmount
-
-		+ flatRight
-		* rightAmount
+		directionalSwimDirection
 
 		+ Vector3.yAxis
 		* verticalAmount
-
-
-	----------------------------------------------------------------
-	-- PREVENT DIAGONAL SPEED BOOST
-	----------------------------------------------------------------
 
 	if desired.Magnitude > 1 then
 
@@ -1141,7 +1792,407 @@ local function getOmnidirectionalSwimDirection(): Vector3
 	end
 
 
-	return desired
+	return
+		desired,
+		directionalSwimDirection,
+		surfaceDirectionalSwimDirection
+end
+
+
+----------------------------------------------------------------
+-- SWIM ORIENTATION
+----------------------------------------------------------------
+
+local function getTrackedLookVector(): Vector3
+
+	-- Keep the old full 3D look source for swimming orientation. The separate
+	-- Look controller updates this locally every time the camera CFrame changes,
+	-- so it preserves camera pitch without inheriting the RemoteEvent throttle.
+	local trackedLookVector =
+		player:GetAttribute(
+			"LooKVector"
+		)
+
+	if
+		typeof(trackedLookVector) == "Vector3"
+		and trackedLookVector.Magnitude > 0.001
+	then
+		return trackedLookVector.Unit
+	end
+
+
+	local camera =
+		Workspace.CurrentCamera
+
+	if camera then
+
+		local cameraLookVector =
+			camera.CFrame.LookVector
+
+		if cameraLookVector.Magnitude > 0.001 then
+			return cameraLookVector.Unit
+		end
+	end
+
+
+	local currentRoot =
+		rootPart
+
+	if currentRoot then
+		return currentRoot.CFrame.LookVector
+	end
+
+
+	return Vector3.new(
+		0,
+		0,
+		-1
+	)
+end
+
+local function getNeutralSwimOrientation(): CFrame
+
+	local trackedLookVector =
+		getTrackedLookVector()
+
+	local flatLookVector =
+		Vector3.new(
+			trackedLookVector.X,
+			0,
+			trackedLookVector.Z
+		)
+
+	if
+		flatLookVector.Magnitude
+		> SWIM_DIRECTION_DEADZONE
+	then
+
+		lastSurfaceSwimFacingDirection =
+			flatLookVector.Unit
+	end
+
+
+	-- Neutral means a normal upright Roblox character. AlignOrientation's
+	-- responsiveness makes the transition back from a prone swim smooth.
+	return CFrame.lookAt(
+		Vector3.zero,
+		lastSurfaceSwimFacingDirection,
+		Vector3.yAxis
+	)
+end
+
+
+local function getProneSwimOrientation(
+	swimHeading: Vector3
+): CFrame
+
+	local currentRoot =
+		rootPart
+
+	local camera =
+		Workspace.CurrentCamera
+
+	local heading =
+		swimHeading.Unit
+
+
+	----------------------------------------------------------------
+	-- HEAD-FIRST AXIS
+	----------------------------------------------------------------
+
+	-- A standing Roblox character's HEAD/FEET axis is RootPart.UpVector.
+	-- While prone-swimming, LOCAL +Y therefore points along travel.
+	--
+	-- The important extra rule here is BELLY-DOWN STABILITY:
+	-- reversing direction must not leave the character permanently on
+	-- their back. We project world-up onto the plane perpendicular to
+	-- the head-first heading and use that as the character's BackVector.
+	-- That makes LookVector/chest face toward world-down whenever the
+	-- heading is not almost perfectly vertical.
+
+	local worldUp =
+		Vector3.yAxis
+
+	local projectedWorldUp =
+		worldUp
+	- heading
+		* worldUp:Dot(
+			heading
+		)
+
+
+	----------------------------------------------------------------
+	-- NORMAL PRONE SWIMMING: KEEP BELLY TOWARD THE WATER / GROUND
+	----------------------------------------------------------------
+
+	if projectedWorldUp.Magnitude > 0.05 then
+
+		local backVector =
+			projectedWorldUp.Unit
+
+		-- For CFrame.fromMatrix:
+		-- X = Right
+		-- Y = Up      (our head-first swim heading)
+		-- Z = Back    (opposite the chest/LookVector)
+		--
+		-- heading x back gives the matching RightVector. Recomputing
+		-- BackVector afterward removes tiny floating-point skew.
+		local rightVector =
+			heading:Cross(
+				backVector
+			)
+
+		if rightVector.Magnitude <= 0.001 then
+			return getNeutralSwimOrientation()
+		end
+
+		rightVector =
+			rightVector.Unit
+
+		backVector =
+			rightVector:Cross(
+				heading
+			).Unit
+
+		return CFrame.fromMatrix(
+			Vector3.zero,
+			rightVector,
+			heading,
+			backVector
+		)
+	end
+
+
+	----------------------------------------------------------------
+	-- NEAR-VERTICAL SWIMMING
+	----------------------------------------------------------------
+
+	-- When swimming almost perfectly straight up/down, world-up is
+	-- parallel to the body axis and cannot tell us which way the chest
+	-- should roll. Use camera-right (or the current root-right) only for
+	-- that roll decision. This keeps Ctrl dives and vertical climbs stable
+	-- without letting that camera roll reference cause the old backstroke
+	-- problem during ordinary forward/backward swimming.
+
+	local rollReference =
+		Vector3.xAxis
+
+	if camera then
+
+		rollReference =
+			camera.CFrame.RightVector
+
+	elseif currentRoot then
+
+		rollReference =
+			currentRoot.CFrame.RightVector
+	end
+
+
+	local rightVector =
+		rollReference
+	- heading
+		* rollReference:Dot(
+			heading
+		)
+
+	if rightVector.Magnitude <= 0.001 then
+
+		local fallbackReference =
+			Vector3.zAxis
+
+		rightVector =
+			fallbackReference
+		- heading
+			* fallbackReference:Dot(
+				heading
+			)
+	end
+
+	if rightVector.Magnitude <= 0.001 then
+		return getNeutralSwimOrientation()
+	end
+
+	rightVector =
+		rightVector.Unit
+
+
+	local backVector =
+		rightVector:Cross(
+			heading
+		)
+
+	if backVector.Magnitude <= 0.001 then
+		return getNeutralSwimOrientation()
+	end
+
+	backVector =
+		backVector.Unit
+
+
+	return CFrame.fromMatrix(
+		Vector3.zero,
+		rightVector,
+		heading,
+		backVector
+	)
+end
+
+local function updateSwimOrientation(
+	directionalSwimDirection: Vector3,
+	surfaceDirectionalSwimDirection: Vector3,
+	surfaceHoldActive: boolean
+)
+
+	local orientation =
+		swimOrientation
+
+	if
+		not orientation
+		or not orientation.Enabled
+	then
+		return
+	end
+
+
+	----------------------------------------------------------------
+	-- EXPLICIT VERTICAL POSES
+	----------------------------------------------------------------
+
+	-- If both vertical buttons are held, their physical Y input cancels.
+	-- Visually return to neutral too rather than fighting between poses.
+	if swimUpHeld and swimDownHeld then
+
+		orientation.CFrame =
+			getNeutralSwimOrientation()
+
+		return
+	end
+
+
+	-- CTRL / C / controller B:
+	--
+	-- Go straight down in world space, while visually using the SAME
+	-- head-first dive pose produced by looking straight down and pressing W.
+	--
+	-- This is deliberately only an orientation target. The physical descent
+	-- is still produced separately by the world-space -Y movement vector.
+	if swimDownHeld then
+
+		orientation.CFrame =
+			getProneSwimOrientation(
+				-Vector3.yAxis
+			)
+
+		return
+	end
+
+
+	-- SPACE / controller A:
+	--
+	-- Re-centre into the neutral/treading pose while the controller moves
+	-- straight upward in world space. This preserves the animation that
+	-- already looks good for surfacing instead of standing the avatar on
+	-- their head/feet axis.
+	if swimUpHeld then
+
+		orientation.CFrame =
+			getNeutralSwimOrientation()
+
+		return
+	end
+
+
+	----------------------------------------------------------------
+	-- SURFACE SWIMMING
+	----------------------------------------------------------------
+
+	if surfaceHoldActive then
+
+		-- At the surface, use Roblox's already camera-relative horizontal
+		-- MoveDirection. This gives the old useful "laying down and turning"
+		-- feel without allowing camera pitch to tip the swimmer through the
+		-- surface. It also remains intuitive with a top-down camera: A/D and
+		-- the other movement keys still produce a real horizontal heading.
+		if
+			surfaceDirectionalSwimDirection.Magnitude
+			> SWIM_DIRECTION_DEADZONE
+		then
+
+			local surfaceHeading =
+				surfaceDirectionalSwimDirection.Unit
+
+			lastSurfaceSwimFacingDirection =
+				surfaceHeading
+
+			orientation.CFrame =
+				getProneSwimOrientation(
+					surfaceHeading
+				)
+
+			return
+		end
+
+
+		-- No movement at the surface: smoothly stand the character back into
+		-- the neutral/treading animation rather than leaving them frozen prone.
+		orientation.CFrame =
+			getNeutralSwimOrientation()
+
+		return
+	end
+
+
+	----------------------------------------------------------------
+	-- UNDERWATER OMNIDIRECTIONAL SWIMMING
+	----------------------------------------------------------------
+
+	-- Once SurfaceHold releases, use the complete 3D camera-relative
+	-- directional vector. This is the head-first behaviour that is already
+	-- working correctly: look down + W dives, look up + W climbs, and
+	-- combinations with A/D naturally alter the heading.
+	if
+		directionalSwimDirection.Magnitude
+		> SWIM_DIRECTION_DEADZONE
+	then
+
+		local desiredHeading =
+			directionalSwimDirection.Unit
+
+		local horizontalHeading =
+			Vector3.new(
+				desiredHeading.X,
+				0,
+				desiredHeading.Z
+			)
+
+		if
+			horizontalHeading.Magnitude
+			> SWIM_DIRECTION_DEADZONE
+		then
+
+			lastSurfaceSwimFacingDirection =
+				horizontalHeading.Unit
+		end
+
+
+		orientation.CFrame =
+			getProneSwimOrientation(
+				desiredHeading
+			)
+
+		return
+	end
+
+
+	----------------------------------------------------------------
+	-- IDLE UNDERWATER
+	----------------------------------------------------------------
+
+	-- Let AlignOrientation smoothly carry the swimmer back to the normal
+	-- upright/treading pose when directional movement stops.
+	orientation.CFrame =
+		getNeutralSwimOrientation()
 end
 
 
@@ -1184,7 +2235,11 @@ local function updateSwimming(
 
 	local rootY =
 		currentRoot.Position.Y
-		- PlayerWaveMotionState.Offset
+	- PlayerWaveMotionState.Offset
+
+
+	maintainCustomWaterCCLOwnership()
+
 
 	if
 		not bodyInWater
@@ -1230,6 +2285,12 @@ local function updateSwimming(
 
 		exitSwimming()
 	end
+
+
+	updateSubmergedAttribute(
+		surfaceY,
+		rootY
+	)
 
 
 	----------------------------------------------------------------
@@ -1285,7 +2346,10 @@ local function updateSwimming(
 	-- OMNIDIRECTIONAL MOVEMENT
 	----------------------------------------------------------------
 
-	local swimDirection =
+	local
+	swimDirection,
+		directionalSwimDirection,
+		surfaceDirectionalSwimDirection =
 		getOmnidirectionalSwimDirection()
 
 
@@ -1340,6 +2404,14 @@ local function updateSwimming(
 		and not currentHumanoid.Sit
 		and not currentHumanoid.PlatformStand
 
+
+	updateSwimOrientation(
+		directionalSwimDirection,
+		surfaceDirectionalSwimDirection,
+		surfaceHoldActive
+	)
+
+
 	if surfaceHoldActive then
 		local verticalError = 0
 
@@ -1349,7 +2421,7 @@ local function updateSwimming(
 		then
 			verticalError =
 				SURFACE_FLOAT_TARGET_Y
-				- rootY
+			- rootY
 		end
 
 		targetVelocity =
@@ -1481,6 +2553,11 @@ player.CharacterAdded:Connect(
 
 
 player.CharacterRemoving:Connect(function()
+	setCustomWaterAttributes(
+		false,
+		false
+	)
+
 	PlayerWaveMotionState.Root = nil
 	PlayerWaveMotionState.SurfaceHold = false
 	PlayerWaveMotionState.Offset = 0
@@ -1502,6 +2579,40 @@ player.CharacterRemoving:Connect(function()
 
 	buoyancyForce =
 		nil
+
+
+	swimOrientation =
+		nil
+
+	humanoidAutoRotateBeforeSwimming =
+		nil
+
+
+	characterModel =
+		nil
+
+
+	controllerManager =
+		nil
+
+
+	airController =
+		nil
+
+
+	groundController =
+		nil
+
+
+
+	activeControllerBeforeSwimming =
+		nil
+
+
+	airControllerStateBeforeSwimming =
+		nil
+
+
 
 
 	bodyInWater =

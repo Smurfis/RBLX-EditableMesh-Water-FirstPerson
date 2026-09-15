@@ -14,6 +14,7 @@ local State = require(modules:WaitForChild("PlayerWaveMotionState"))
 local settings = Config.PlayerWaveMotion
 local player = Players.LocalPlayer
 
+
 local root: BasePart? = nil
 local humanoid: Humanoid? = nil
 local joint: Motor6D? = nil

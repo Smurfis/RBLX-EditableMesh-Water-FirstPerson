@@ -36,6 +36,7 @@ prompt.HoldDuration = 0
 prompt.MaxActivationDistance = 10
 prompt.RequiresLineOfSight = false
 prompt.Parent = root
+prompt.ClickablePrompt = false
 
 local dropEvent = prompt:FindFirstChild("DropEvent") or Instance.new("RemoteEvent")
 dropEvent.Name = "DropEvent"

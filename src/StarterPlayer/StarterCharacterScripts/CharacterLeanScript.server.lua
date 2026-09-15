@@ -1,6 +1,6 @@
 --[[
 	CharacterLeanScript - This script makes characters slightly lean in the direction they are moving.
-
+	-- Its being made as a modulescript not even a localscript yet alone having teh damn runcontext of client fuck
 	Each Step the character's Root joint Transform is updated based on the character's velocity.
 --]]
 
@@ -16,6 +16,8 @@ end
 local character = script.Parent
 -- Characters are not replicated atomically so we need to wait for children
 local humanoid = character:WaitForChild("Humanoid")
+
+
 local root = character:WaitForChild("HumanoidRootPart")
 local rootJoint = character:WaitForChild("LowerTorso"):WaitForChild("Root")
 
