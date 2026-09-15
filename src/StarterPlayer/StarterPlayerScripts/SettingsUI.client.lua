@@ -7,11 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local Checkbox = require(
-	ReplicatedStorage
-		:WaitForChild("UI")
-		:WaitForChild("Checkbox")
-)
+local Checkbox = require(ReplicatedStorage:WaitForChild("UI"):WaitForChild("Checkbox"))
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "SettingsGui"
@@ -73,12 +69,7 @@ listLayout.Padding = UDim.new(0, 10)
 listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 listLayout.Parent = scroll
 
-local function createSlider(
-	name: string,
-	labelText: string,
-	defaultValue: number,
-	callback: (number) -> ()
-): Frame
+local function createSlider(name: string, labelText: string, defaultValue: number, callback: (number) -> ()): Frame
 	local frame = Instance.new("Frame")
 	frame.Name = name
 	frame.Size = UDim2.new(1, -8, 0, 48)
@@ -188,12 +179,7 @@ local function setWorkspaceTransparencyAttribute(folderName: string, attributeNa
 	end
 end
 
-local function createToggle(
-	name: string,
-	labelText: string,
-	defaultValue: boolean,
-	callback: (boolean) -> ()
-): Frame
+local function createToggle(name: string, labelText: string, defaultValue: boolean, callback: (boolean) -> ()): Frame
 	local checkbox = Checkbox.new(scroll, labelText, defaultValue, callback)
 	checkbox.Frame.Name = name
 	checkbox.Frame.LayoutOrder = 1
@@ -212,7 +198,12 @@ local transparentWaterSliders: { Frame } = {}
 local transparentWaterEnabled = false
 local transparentWaterToggle: Checkbox.Checkbox?
 
-local function addTransparentWaterSlider(name: string, labelText: string, defaultValue: number, attributeName: string): Frame
+local function addTransparentWaterSlider(
+	name: string,
+	labelText: string,
+	defaultValue: number,
+	attributeName: string
+): Frame
 	local frame = createSlider(name, labelText, defaultValue, function(value)
 		if transparentWaterEnabled then
 			setWorkspaceTransparencyAttribute("__ClientRealisticWaterV4", attributeName, value)
@@ -246,10 +237,15 @@ transparentWaterToggle = Checkbox.new(scroll, "Enable Transparent Water", false,
 	end
 end)
 transparentWaterToggle.Frame.Name = "TransparentOceanToggle"
-	transparentWaterToggle.Frame.LayoutOrder = 1
+transparentWaterToggle.Frame.LayoutOrder = 1
 
 addTransparentWaterSlider("WaveFoamTransparencySlider", "WaveFoamVFX transparency", 0.3, "WaveFoamTransparencyOverride")
-addTransparentWaterSlider("WaterSurfaceTransparencySlider", "WaterSurface transparency", 0.6, "WaterSurfaceTransparency")
+addTransparentWaterSlider(
+	"WaterSurfaceTransparencySlider",
+	"WaterSurface transparency",
+	0.6,
+	"WaterSurfaceTransparency"
+)
 addTransparentWaterSlider("WaterMiddleTransparencySlider", "WaterMiddle transparency", 0.8, "WaterMiddleTransparency")
 addTransparentWaterSlider("WaterBaseTransparencySlider", "WaterBase transparency", 0.95, "WaterBaseTransparency")
 
@@ -315,12 +311,7 @@ statusGui.IgnoreGuiInset = true
 statusGui.DisplayOrder = 20
 statusGui.Parent = playerGui
 
-local function createKeybindRow(
-	name: string,
-	imageId: string,
-	text: string,
-	yOffset: number
-): Frame
+local function createKeybindRow(name: string, imageId: string, text: string, yOffset: number): Frame
 	local row = Instance.new("Frame")
 	row.Name = name
 	row.AnchorPoint = Vector2.new(1, 1)
@@ -356,26 +347,22 @@ local function createKeybindRow(
 	return row
 end
 
-local settingsRow = createKeybindRow(
-	"SettingsKeybind",
-	"rbxassetid://97812683336887",
-	"SETTINGS: [=]",
-	-42
-)
+local settingsRow = createKeybindRow("SettingsKeybind", "rbxassetid://97812683336887", "SETTINGS: [=]", -42)
 
-local freeMouseRow = createKeybindRow(
-	"MouseLockKeybind",
-	"rbxassetid://77904780414059",
-	"Free Mouse: [M]",
-	-70
-)
+local freeMouseRow = createKeybindRow("MouseLockKeybind", "rbxassetid://77904780414059", "Free Mouse: [M]", -98)
+
+local cameraModeRow =
+	createKeybindRow("CameraModeKeybind", "rbxassetid://97812683336887", "Toggle Camera Modes: [Y]", -70)
 
 local settingsLabel = settingsRow:FindFirstChild("Label")
 local mouseLabel = freeMouseRow:FindFirstChild("Label")
+local cameraModeLabel = cameraModeRow:FindFirstChild("Label")
 local settingsIcon = settingsRow:FindFirstChild("Icon")
 local mouseIcon = freeMouseRow:FindFirstChild("Icon")
+local cameraModeIcon = cameraModeRow:FindFirstChild("Icon")
 local SETTINGS_FULL_TEXT = "SETTINGS: [=]"
 local MOUSE_FULL_TEXT = "Free Mouse: [M]"
+local CAMERA_MODE_FULL_TEXT = "Toggle Camera Modes: [Y]"
 
 local compactKeybinds = false
 local function applyCompactKeybinds()
@@ -384,24 +371,30 @@ local function applyCompactKeybinds()
 		settingsLabel.Text = if compactKeybinds then "[=]" else SETTINGS_FULL_TEXT
 	end
 	if mouseLabel and mouseLabel:IsA("TextLabel") then
-		mouseLabel.Visible = true
+		mouseLabel.Visible = player:GetAttribute("TrueFirstPersonActive") == true
 		mouseLabel.Text = if compactKeybinds then "[M]" else MOUSE_FULL_TEXT
 	end
+	if cameraModeLabel and cameraModeLabel:IsA("TextLabel") then
+		cameraModeLabel.Visible = true
+		cameraModeLabel.Text = if compactKeybinds then "[Y]" else CAMERA_MODE_FULL_TEXT
+	end
 	if compactKeybinds then
-		if settingsIcon and settingsIcon:IsA("ImageLabel") then settingsIcon.Visible = true end
-		if mouseIcon and mouseIcon:IsA("ImageLabel") then mouseIcon.Visible = true end
+		if settingsIcon and settingsIcon:IsA("ImageLabel") then
+			settingsIcon.Visible = true
+		end
+		if mouseIcon and mouseIcon:IsA("ImageLabel") then
+			mouseIcon.Visible = true
+		end
+		if cameraModeIcon and cameraModeIcon:IsA("ImageLabel") then
+			cameraModeIcon.Visible = true
+		end
 	end
 end
 
-local compactSetting = Checkbox.new(
-	scroll,
-	"Compact keybind HUD",
-	false,
-	function(enabled)
-		compactKeybinds = enabled
-		applyCompactKeybinds()
-	end
-)
+local compactSetting = Checkbox.new(scroll, "Compact keybind HUD", false, function(enabled)
+	compactKeybinds = enabled
+	applyCompactKeybinds()
+end)
 compactSetting.Frame.LayoutOrder = 4
 
 local reticle = Instance.new("Frame")
@@ -487,18 +480,17 @@ local function updateMouseUi()
 		settingsIcon.Visible = not settingsOpen
 	end
 	if mouseIcon and mouseIcon:IsA("ImageLabel") then
-		mouseIcon.Visible = not mouseReleased
+		mouseIcon.Visible = player:GetAttribute("TrueFirstPersonActive") == true and not mouseReleased
+	end
+	if mouseLabel and mouseLabel:IsA("TextLabel") then
+		mouseLabel.Visible = player:GetAttribute("TrueFirstPersonActive") == true
 	end
 	reticle.Visible = not mouseReleased
 end
 
 updateMouseUi()
 
-local settingsTweenInfo = TweenInfo.new(
-	0.24,
-	Enum.EasingStyle.Quart,
-	Enum.EasingDirection.Out
-)
+local settingsTweenInfo = TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
 local function setSettingsOpen(open: boolean)
 	settingsOpen = open
@@ -552,7 +544,7 @@ end)
 
 local mouseButton = addKeybindButton(freeMouseRow)
 mouseButton.Activated:Connect(function()
-	if settingsOpen then
+	if settingsOpen or player:GetAttribute("TrueFirstPersonActive") ~= true then
 		return
 	end
 	mouseReleased = not mouseReleased
@@ -574,9 +566,20 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 
 	if input.KeyCode == Enum.KeyCode.M then
+		if player:GetAttribute("TrueFirstPersonActive") ~= true then
+			return
+		end
 		mouseReleased = not mouseReleased
 		updateMouseUi()
 	end
+end)
+
+player:GetAttributeChangedSignal("TrueFirstPersonActive"):Connect(function()
+	if player:GetAttribute("TrueFirstPersonActive") ~= true then
+		mouseReleased = false
+	end
+	applyCompactKeybinds()
+	updateMouseUi()
 end)
 
 local serverId = game.JobId

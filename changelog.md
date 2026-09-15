@@ -2,6 +2,18 @@
 
 > Developer status: Smurfiend's sanity level is depleting. Spark remains operational.
 
+### First-Person Presentation and Boat IK Follow-up — 2026-09-15
+
+The current Roblox first-person result is recorded as an intentional presentation option under test: the camera currently shows the player's hands. The desired settings toggle is to keep this hands-only view or show the HumanoidRootPart, legs and body while continuing to hide only the head and accessories.
+
+Boat seating must preserve the steering-wheel hand IK and seated look limits in every camera mode, including true first person. True first person may request camera and look-input ownership, but seated steering/body IK remains the physical orientation owner. Swimming likewise retains orientation ownership through its swim alignment rather than competing with CCL turning.
+
+Future camera work must keep these responsibilities separate: camera mode controls presentation and mouse capture; the active vehicle, seated IK, swimming or special-state controller owns physical character orientation. Add the body-visibility choice as a setting without replacing the project's custom transparency treatment.
+
+### Camera Keybind Rules
+
+The HUD now always shows `Toggle Camera Modes: [Y]`. `Free Mouse: [M]` appears only while `TrueFirstPersonActive` is enabled. Leaving first person clears the free-mouse state and ignores `M`, preventing it from interfering with third-person camera rotation.
+
 CharacterAbilities and Roblox's Character Controller Library (CCL) are now active in the project. `SwimmingController.client.lua` has been updated so the custom EditableMesh ocean can coexist with that controller stack without asking Roblox's native water state to simulate a surface it cannot detect.
 
 ### SwimmingController — CCL Input Bridge
@@ -104,6 +116,58 @@ The snapshot/restore handoff is equally important. CharacterAbilities may add or
 - Restore captured CCL settings and controller ownership when custom swimming ends.
 - Preserve the graduated surface exit, horizontal surface behavior, full 3D underwater movement and explicit world-up/world-down controls.
 
+### True First Person and Third-Person Camera Preferences
+
+Fully zooming into the character now makes `TrueFirstPersonActive` the high-priority camera/input presentation state. The selected third-person behavior is stored separately in the player's `ThirdPersonCameraMode` attribute and is never reset merely because first person became active.
+
+Pressing `Y` cycles the stored preference:
+
+| Mode | Third-person mouse | Third-person CCL turning |
+| --- | --- | --- |
+| 1 — Default Roblox | Roblox CameraModule owns normal mouse behavior | `UseLookDirectionInput = false` |
+| 2 — Action Cam | locked to center | `UseLookDirectionInput = false` |
+| 3 — Action Cam + puzzle turning | locked to center | `UseLookDirectionInput = true` |
+
+The existing toggle sound (`128614591007939`) plays only when the player changes this preference. Changing modes recaptures the mouse, while respawning or crossing the first-person zoom boundary does not play the sound.
+
+At true first-person zoom, the effective behavior becomes mouse lock plus look-direction turning regardless of whether the stored third-person mode is 1, 2 or 3. Zooming out restores the selected mode. For example, Action Cam becomes True First Person while zoomed in and returns to Action Cam afterward.
+
+Settings and the existing `M` free-mouse control remain deliberate presentation overrides. Outside those explicit releases, `FirstPersonController` reasserts `LockCenter` after Roblox's camera step while true first person or an Action Cam mode is active.
+
+#### Physical Orientation Ownership
+
+`AbilityManagerActor.Abilities.Turning.UseLookDirectionInput` is now derived from the effective camera state, but only when normal locomotion is allowed to own facing:
+
+```text
+normal walking + True First Person
+    -> CCL look-direction turning enabled
+
+custom swimming / IsSwimming
+    -> CCL look-direction turning disabled
+    -> SwimmingController AlignOrientation remains the physical owner
+
+seated
+    -> CCL look-direction turning disabled
+    -> seated camera, body IK and steering systems retain ownership
+```
+
+This check runs continuously so leaving water or standing up immediately restores the turning behavior requested by the current first-person state or saved third-person mode. Character lookup follows the beta hierarchy `Character.AbilityManagerActor.Abilities.Turning` and occurs asynchronously so a late-created ability tree does not block camera setup.
+
+The existing upper-body swim guard now recognizes the custom `IsSwimming` attribute as well as Roblox's native Swimming state. This matches the newer custom-water contract, which deliberately does not force the native state.
+
+#### Existing Visibility Treatment Preserved
+
+Camera-mode selection does not add Roblox stock first-person hiding or introduce a second visibility implementation. The existing controller remains the sole owner of the project's local presentation:
+
+- head and accessories blend to hidden on first-person entry;
+- the body is restored against Roblox's automatic full-character transparency;
+- original `LocalTransparencyModifier` values are retained;
+- dynamically added character parts receive the same treatment;
+- head/accessory visibility blends back to its stored values on zoom-out;
+- the seated Scriptable camera and standing `CameraOffset` continue to use the existing implementation.
+
+The resulting ownership rule is: True First Person owns camera/input presentation, while the active locomotion or context system may own physical character orientation.
+
 ### Boat / WaterInteraction Integration — In-Game Validation
 
 The first actual boat Model has now been integrated with the custom EditableMesh ocean through the existing `WaterInteractable` buoyancy system. The boat was configured and validated inside the Roblox place; its physical Model and tuned Studio properties are recorded here even though the asset itself is not represented as a new Rojo source file.
@@ -204,30 +268,118 @@ Live Studio testing confirmed that a `BoatSeat` beneath `Workspace.Boats` is dis
 
 The initial report that the helm was not steering was retracted after observing it in motion, so the steering implementation required no further correction.
 
-### Spark Intro Iteration — Isolated Place, Pending Import
+### Spark V2 Intro, Visuals, Follower and Camera Handoff — Imported for Testing
 
-A new Spark/Fairy intro iteration was created on 14 September 2026 in a separate Roblox place used for isolated development. It has not yet been imported into this repository or its current Rojo project, so it is recorded here as completed external prototype work pending integration rather than current project behavior.
+The Spark/Fairy iteration created in the isolated Roblox place on 14 September has now been imported into the repository working copy. It remains uncommitted while the complete sequence is tested in Studio.
 
-The isolated place contains the newly created systems/assets named:
+The source layout is now:
 
-- `ReplicatedFirst`
-- `IntroSpark`
-- `NewSparkModels`
-- `CameraModes`
-- `Behaviours`
+```text
+ReplicatedFirst
+└─ LoadingCameraFirstIntroEffect
 
-This iteration substantially changes Spark's introduction and moves the opening animation into the `ReplicatedFirst` startup flow. Its exact animation sequence, module responsibilities, model hierarchy and camera handoff must be documented from the imported source after it is copied into this project.
+ReplicatedStorage
+└─ Modules
+   └─ Spark
+      ├─ SparkCameraModule
+      └─ SparkVisuals
 
-Import requirements:
+ServerScriptService
+└─ LoadingCameraTransitionListener
 
-1. preserve the isolated place as the source reference until the repository copy has been validated;
-2. import the five named areas without overwriting the current runtime Spark follower or Studio-managed assets blindly;
-3. add the imported scripts/assets to the Rojo tree where appropriate, while retaining `$ignoreUnknownInstances` for Studio-managed content;
-4. compare `NewSparkModels` with the current `ReplicatedStorage.Models.NPCs.SparkModels` hierarchy;
-5. verify the transition from `IntroSpark` to the gameplay Spark does not create two visible companions;
-6. verify `CameraModes` returns camera ownership cleanly to the current first-person controller;
-7. verify `Behaviours` does not duplicate or conflict with the gameplay follower's movement, focus, animation or visual-state logic;
-8. update this section from pending import to integrated only after the actual source and Studio hierarchy are present and tested in the main project.
+StarterPlayerScripts
+└─ LoadingCameraController
+
+StarterCharacterScripts
+└─ SparkFollower
+```
+
+`ReplicatedFirst` is explicitly mapped in `default.project.json`, allowing the first intro effect to run early while preserving `$ignoreUnknownInstances` for Studio-managed content.
+
+#### ReplicatedFirst Spark Intro
+
+`LoadingCameraFirstIntroEffect.client.lua` takes the initial camera at 2,000 studs, clones the authored `Spark` model as `workspace.CinematicSpark`, plays the flight animation and drives the opening movement independently of the gameplay follower. Each intro selects a random related normal/ForceField color pair and applies Spark's circle, burst, reform and trail visual language.
+
+If the place is still loading after the first movement, CinematicSpark remains alive in a waiting motion. Once both the game and opening sequence are ready, the script restores the authored gameplay appearance, centers Spark, and sets `ReadyForCameraTransition = true` for the next camera owner.
+
+#### SparkCameraModule Rename and Handoff
+
+The imported `GtaCameraManager` name and its obsolete `ClientModules` dependency have been removed. The module now lives at `ReplicatedStorage.Modules.Spark.SparkCameraModule`, matching Spark's project terminology and the Rojo hierarchy.
+
+The rename also covers runtime identifiers: input-freeze action, cloud overlay, blur, camera sounds, saved CCL controller attribute, diagnostics and `SparkCameraTransitionRemote`. No `GtaCameraManager`, `GtaCam` or `GTA_` identifiers remain in the active source tree.
+
+`LoadingCameraController.client.lua` requires `SparkCameraModule`, removes Roblox's default loading screen, supplies the ascent/descent configuration and fades the optional `LoadingGui`. The camera module then:
+
+1. waits for `CinematicSpark` and the hidden player gameplay Spark;
+2. disables PlayerModule controls and temporarily releases the active CCL controller;
+3. takes camera and cinematic-Spark ownership from the ReplicatedFirst render bindings;
+4. runs the sky ascent, camera flip, cloud/blur transition and camera-relative Spark flight;
+5. restores the normal camera behind the character;
+6. fires the local `SparkCameraHandoff` BindableEvent;
+7. removes CinematicSpark and temporary camera effects;
+8. invokes `SparkCameraTransitionRemote` so the server acknowledges completion before local controls are restored.
+
+`LoadingCameraTransitionListener.server.lua` owns that RemoteFunction and accepts the `TransitionFinished` handshake. This acknowledgement coordinates transition completion; it does not make Spark's companion motion server-authoritative.
+
+#### Canonical SparkVisuals Module
+
+`SparkVisuals.lua` is the new source of truth for how gameplay Spark looks. It owns body/soul color propagation, wing SurfaceAppearance values, light response, ambient particles, the dual trail, materialisation bursts, dissolve/reform behavior, intro color seeds and appearance restoration.
+
+It also provides Spark's new idle visual personality. When the player and camera remain calm, Spark can slowly experiment with shell color, emission, MaterialVariant and Neon/white forms. Movement or active camera input returns him to the authored neutral appearance. `SparkFollower` decides when a behavior is allowed; `SparkVisuals` owns how the visual transition is produced.
+
+#### SparkFollower V2 Replacement
+
+The former 474-line gameplay follower has been replaced locally by the new follower implementation. The prior source remains preserved in the external Spark V1 snapshot at `D:\RBLX-Spark-Fairy\Versions\V1\code`.
+
+The new follower:
+
+- creates the gameplay Spark hidden and waits for `SparkCameraHandoff` before revealing its parts, lights, particles and beams;
+- consumes `ReplicatedStorage.Modules.Spark.SparkVisuals` rather than maintaining a second visual implementation;
+- listens to `TrueFirstPersonActive`, matching the current first-person controller's state contract;
+- selects first-person, close-shoulder, free-camera, far-shoulder and climbing-observer homes from actual camera distance;
+- gives climbing a screen-safe upper-right observer position with vertical/descent catch-up;
+- gives true minimum first person a small physical Spark body with world collision but explicit no-collision constraints against the local character;
+- detects excessive first-person separation and uses the canonical dissolve/reform effect instead of flying across the scene;
+- retains slime focus, hover animation, trail response and smooth movement;
+- adds idle visual personality while yielding to movement, camera activity, focus and cinematic ownership;
+- cleans up render connections, attribute listeners, animation, visuals and the cloned Spark when the character script is destroyed.
+
+#### Required Studio Validation
+
+The first integrated Studio run exposed a startup race. The gameplay character appeared briefly and `SparkCameraModule` reported `workspace.CinematicSpark was not found` because it used a fixed ten-second lookup while ReplicatedFirst was still preparing Spark. `LoadingGui` also began hiding 0.2 seconds after the asynchronous transition started rather than after it completed.
+
+The working copy now uses explicit lifecycle markers:
+
+```text
+ReplicatedFirst finishes CinematicSpark
+    -> SparkIntroReadyForCameraTransition
+
+SparkFollower creates its hidden clone, SparkVisuals and handoff listener
+    -> SparkGameplayFollowerReady
+
+SparkCameraModule completes its transition and receives server acknowledgement
+    -> SparkInitialLoadComplete
+
+SpawnVisualController
+    -> begins initial character materialisation
+```
+
+The camera module no longer abandons CinematicSpark after an arbitrary timeout. A delayed warning reports an unusually long wait without breaking the handoff. ReplicatedFirst conceals the initial character immediately and preserves each part's previous `LocalTransparencyModifier`; the existing first-person visibility owner honors that loading state and restores its normal custom visibility rules after completion. `LoadingCameraController` now fades the optional loading GUI from the real completion callback.
+
+The session-level completion attribute remains true after the initial intro, so later character respawns use the ordinary spawn materialisation flow without waiting for the one-time camera cinematic again.
+
+Before this import is committed, verify:
+
+1. the authored model exists at `ReplicatedStorage.Models.NPCs.SparkModels.Spark` with `SparkBody`, both wings and the expected visual descendants;
+2. only CinematicSpark is visible during the intro and only the player gameplay Spark is visible after handoff;
+3. the initial camera remains locked at the loading position until `SparkCameraModule` takes ownership;
+4. the final camera returns cleanly to the existing first-person/Action Cam controller;
+5. movement and CCL controller ownership are restored after the server handshake;
+6. respawning creates one fresh gameplay Spark without retaining old handoff connections or clones;
+7. `TrueFirstPersonActive` transitions Spark between camera and shoulder presentation correctly;
+8. climbing observer placement remains on-screen across minimum, middle and maximum zoom;
+9. idle morphs stop and restore the authored appearance as soon as movement or camera input resumes;
+10. missing optional `LoadingGui` content does not prevent the camera sequence from completing.
 
 ## v0.5.1-dev — 2026-09-13 Late Night to 2026-09-14 — First-Person Rebuild, Boat and Helm Integration
 
@@ -350,7 +502,7 @@ That division is compatible with the CharacterAbilities direction because camera
 
 ### Known Integration Gaps at This Snapshot
 
-- `FirstPersonController.client.lua` publishes `TrueFirstPersonActive`, while the current `SparkFollower.client.lua` still reads and listens to `FirstPerson`. Until those names are unified or bridged, zooming between first and third person will not automatically switch the current follower between its two placement modes.
+- At this snapshot, `FirstPersonController.client.lua` published `TrueFirstPersonActive` while the old `SparkFollower.client.lua` still listened to `FirstPerson`. The Spark V2 import documented above resolves this historical gap by consuming `TrueFirstPersonActive` directly.
 - `getUpperBodyConstraintAlpha()` is implemented but not consumed by `updateTorsoIK`; the published `UpperBodyConstraintAlpha` therefore remains `0`.
 - The boat, steering hinge script and assembled helm hierarchy remain Studio-managed, so only the `PortHelmSteering.fbx` source and related IK code can be verified from this repository.
 - `PlayerWaveMotionController.client.lua` has no behavioural delta from `origin/main` despite appearing modified.
@@ -2344,3 +2496,10 @@ WATER
 - WaterWaveSampler / buoyancy should remain controller-independent.
 - Gerstner-driven object motion is not considered inherently broken by
   the Character Controller Library regression.
+### First-Person Presentation and Boat IK Follow-up — 2026-09-15
+
+The current Roblox first-person result is recorded as an intentional presentation option under test: the camera currently shows the player's hands. The desired settings toggle is to keep this hands-only view or show the HumanoidRootPart, legs and body while continuing to hide only the head and accessories.
+
+Boat seating must preserve the steering-wheel hand IK and seated look limits in every camera mode, including true first person. True first person may request camera and look-input ownership, but seated steering/body IK remains the physical orientation owner. Swimming likewise retains orientation ownership through its swim alignment rather than competing with CCL turning.
+
+Future camera work must keep these responsibilities separate: camera mode controls presentation and mouse capture; the active vehicle, seated IK, swimming or special-state controller owns physical character orientation. Add the body-visibility choice as a setting without replacing the project's custom transparency treatment.

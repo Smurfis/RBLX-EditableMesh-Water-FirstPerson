@@ -41,6 +41,7 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
@@ -52,6 +53,21 @@ local player = Players.LocalPlayer
 
 player:SetAttribute("SettingsOpen", false)
 player:SetAttribute("MouseReleased", false)
+
+local SPARK_INITIAL_LOAD_COMPLETE_ATTRIBUTE = "SparkInitialLoadComplete"
+
+local LOADING_ORIGINAL_TRANSPARENCY_ATTRIBUTE = "SparkLoadingOriginalLocalTransparency"
+
+local CAMERA_MODE_KEY = Enum.KeyCode.Y
+local DEFAULT_THIRD_PERSON_CAMERA_MODE = 1
+local MAX_THIRD_PERSON_CAMERA_MODE = 3
+local CAMERA_MODE_TOGGLE_SOUND_ID = "rbxassetid://128614591007939"
+
+-- This preference survives first-person entry/exit and character respawns.
+-- First person derives its effective input state without replacing it.
+if player:GetAttribute("ThirdPersonCameraMode") == nil then
+	player:SetAttribute("ThirdPersonCameraMode", DEFAULT_THIRD_PERSON_CAMERA_MODE)
+end
 
 -- Seated camera preference:
 -- true  = free look, +/-170 degrees, can look behind
@@ -76,11 +92,7 @@ UserInputService.MouseIconEnabled = true
 --
 -- CameraOffset is deliberately used instead of writing camera.CFrame
 -- from Head.Position every frame. That breaks the camera <-> IK feedback loop.
-local STANDING_CAMERA_OFFSET = Vector3.new(
-	0,
-	0.10,
-	-0.20
-)
+local STANDING_CAMERA_OFFSET = Vector3.new(0, 0.10, -0.20)
 
 ----------------------------------------------------------------
 -- FIRST PERSON <-> THIRD PERSON ZOOM TRANSITION
@@ -234,8 +246,23 @@ local TORSO_FOLLOW_SPEED = 9
 
 local RENDER_STEP_NAME = "TrueFirstPersonController"
 
+local configuredThirdPersonCameraMode = player:GetAttribute("ThirdPersonCameraMode")
+
+local selectedThirdPersonCameraMode = if typeof(configuredThirdPersonCameraMode) == "number"
+	then math.clamp(math.floor(configuredThirdPersonCameraMode), 1, MAX_THIRD_PERSON_CAMERA_MODE)
+	else DEFAULT_THIRD_PERSON_CAMERA_MODE
+
+player:SetAttribute("ThirdPersonCameraMode", selectedThirdPersonCameraMode)
+
 local character: Model? = nil
 local humanoid: Humanoid? = nil
+
+local abilityManagerTurning: Instance? = nil
+
+local cameraModeToggleSound = Instance.new("Sound")
+cameraModeToggleSound.Name = "CameraModeToggleSound"
+cameraModeToggleSound.SoundId = CAMERA_MODE_TOGGLE_SOUND_ID
+cameraModeToggleSound.Parent = SoundService
 
 local head: BasePart? = nil
 local upperTorso: BasePart? = nil
@@ -294,18 +321,11 @@ local characterDescendantAddedConnection: RBXScriptConnection? = nil
 -- HELPERS
 ----------------------------------------------------------------
 
-local function lerpNumber(
-	a: number,
-	b: number,
-	alpha: number
-): number
+local function lerpNumber(a: number, b: number, alpha: number): number
 	return a + (b - a) * alpha
 end
 
-local function expAlpha(
-	speed: number,
-	dt: number
-): number
+local function expAlpha(speed: number, dt: number): number
 	return 1 - math.exp(-speed * dt)
 end
 
@@ -318,44 +338,93 @@ local function ensureZoomableCameraMode()
 
 	-- Make sure the player can always physically reach true first person.
 	if player.CameraMinZoomDistance > FIRST_PERSON_MIN_ZOOM_DISTANCE then
-		player.CameraMinZoomDistance =
-			FIRST_PERSON_MIN_ZOOM_DISTANCE
+		player.CameraMinZoomDistance = FIRST_PERSON_MIN_ZOOM_DISTANCE
 	end
 
 	if player.CameraMaxZoomDistance <= FIRST_PERSON_EXIT_DISTANCE then
-		player.CameraMaxZoomDistance =
-			THIRD_PERSON_FALLBACK_MAX_ZOOM_DISTANCE
+		player.CameraMaxZoomDistance = THIRD_PERSON_FALLBACK_MAX_ZOOM_DISTANCE
 	end
 end
 
-local function setFirstPersonActive(
-	active: boolean
-)
+local function playCameraModeToggleSound()
+	cameraModeToggleSound:Stop()
+	cameraModeToggleSound.TimePosition = 0
+	cameraModeToggleSound:Play()
+end
+
+local function getAbilityManagerTurning(currentCharacter: Model): Instance?
+	local abilityManagerActor = currentCharacter:WaitForChild("AbilityManagerActor", 10)
+
+	if not abilityManagerActor then
+		warn("[FirstPersonController] Character.AbilityManagerActor was not found")
+		return nil
+	end
+
+	local abilities = abilityManagerActor:WaitForChild("Abilities", 10)
+
+	if not abilities then
+		warn("[FirstPersonController] Character.AbilityManagerActor.Abilities was not found")
+		return nil
+	end
+
+	local turning = abilities:WaitForChild("Turning", 10)
+
+	if not turning then
+		warn("[FirstPersonController] Character.AbilityManagerActor.Abilities.Turning was not found")
+		return nil
+	end
+
+	return turning
+end
+
+local function locomotionOwnsOrientation(): boolean
+	local currentHumanoid = humanoid
+	local currentCharacter = character
+
+	if currentHumanoid and currentHumanoid.SeatPart ~= nil then
+		return true
+	end
+
+	return currentCharacter ~= nil and currentCharacter:GetAttribute("IsSwimming") == true
+end
+
+local function updateAbilityManagerTurning()
+	local turning = abilityManagerTurning
+
+	if not turning or not turning.Parent then
+		return
+	end
+
+	local useLookDirectionInput = (firstPersonActive or selectedThirdPersonCameraMode == 3)
+		and not locomotionOwnsOrientation()
+
+	if turning:GetAttribute("UseLookDirectionInput") ~= useLookDirectionInput then
+		turning:SetAttribute("UseLookDirectionInput", useLookDirectionInput)
+	end
+end
+
+local function setFirstPersonActive(active: boolean)
 	if firstPersonActive == active then
 		return
 	end
 
 	firstPersonActive = active
 
-	player:SetAttribute(
-		"TrueFirstPersonActive",
-		active
-	)
+	player:SetAttribute("TrueFirstPersonActive", active)
+
+	updateAbilityManagerTurning()
 
 	if not active then
 		-- Release the FPS lock immediately. After this point third-person
 		-- CameraModule is free to manage RMB orbit / mouse capture normally.
-		UserInputService.MouseBehavior =
-			Enum.MouseBehavior.Default
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 
-		UserInputService.MouseIconEnabled =
-			true
+		UserInputService.MouseIconEnabled = true
 	end
 end
 
 local function updateFirstPersonZoomState()
-	local camera =
-		Workspace.CurrentCamera
+	local camera = Workspace.CurrentCamera
 
 	if not camera then
 		return
@@ -368,11 +437,7 @@ local function updateFirstPersonZoomState()
 		return
 	end
 
-	local zoomDistance =
-		(
-			camera.CFrame.Position
-			- camera.Focus.Position
-		).Magnitude
+	local zoomDistance = (camera.CFrame.Position - camera.Focus.Position).Magnitude
 
 	if waitingForSeatedZoomOut then
 		if zoomDistance >= FIRST_PERSON_EXIT_DISTANCE then
@@ -396,9 +461,7 @@ end
 local function isCurrentlySeated(): boolean
 	local currentHumanoid = humanoid
 
-	return
-		currentHumanoid ~= nil
-		and currentHumanoid.SeatPart ~= nil
+	return currentHumanoid ~= nil and currentHumanoid.SeatPart ~= nil
 end
 
 local function getFlatRootReference(): CFrame?
@@ -410,23 +473,14 @@ local function getFlatRootReference(): CFrame?
 
 	local look = currentRoot.CFrame.LookVector
 
-	local flatLook = Vector3.new(
-		look.X,
-		0,
-		look.Z
-	)
+	local flatLook = Vector3.new(look.X, 0, look.Z)
 
 	if flatLook.Magnitude < 0.001 then
 		return nil
 	end
 
-	return CFrame.lookAt(
-		Vector3.zero,
-		flatLook.Unit,
-		Vector3.yAxis
-	)
+	return CFrame.lookAt(Vector3.zero, flatLook.Unit, Vector3.yAxis)
 end
-
 
 local function smoothstep01(value: number): number
 	local x = math.clamp(value, 0, 1)
@@ -457,25 +511,15 @@ local function getShoulderWorldPosition(side: string): Vector3?
 		return nil
 	end
 
-	local shoulderName =
-		if side == "Left"
-		then "LeftShoulder"
-		else "RightShoulder"
+	local shoulderName = if side == "Left" then "LeftShoulder" else "RightShoulder"
 
-	local shoulder =
-		currentUpperTorso:FindFirstChild(shoulderName)
+	local shoulder = currentUpperTorso:FindFirstChild(shoulderName)
 
 	if shoulder and shoulder:IsA("Motor6D") then
-		return (
-			currentUpperTorso.CFrame
-				* shoulder.C0
-		).Position
+		return (currentUpperTorso.CFrame * shoulder.C0).Position
 	end
 
-	local upperArm =
-		currentCharacter:FindFirstChild(
-			side .. "UpperArm"
-		)
+	local upperArm = currentCharacter:FindFirstChild(side .. "UpperArm")
 
 	if upperArm and upperArm:IsA("BasePart") then
 		return upperArm.Position
@@ -491,20 +535,11 @@ local function getApproximateArmReach(side: string): number?
 		return nil
 	end
 
-	local upperArm =
-		currentCharacter:FindFirstChild(
-			side .. "UpperArm"
-		)
+	local upperArm = currentCharacter:FindFirstChild(side .. "UpperArm")
 
-	local lowerArm =
-		currentCharacter:FindFirstChild(
-			side .. "LowerArm"
-		)
+	local lowerArm = currentCharacter:FindFirstChild(side .. "LowerArm")
 
-	local hand =
-		currentCharacter:FindFirstChild(
-			side .. "Hand"
-		)
+	local hand = currentCharacter:FindFirstChild(side .. "Hand")
 
 	if
 		not upperArm
@@ -520,10 +555,7 @@ local function getApproximateArmReach(side: string): number?
 	-- R15 arm segments use Y as their longitudinal dimension.
 	-- Hand contributes half its height because the IK end effector sits
 	-- around the hand centre rather than at the fingertips.
-	return
-		upperArm.Size.Y
-		+ lowerArm.Size.Y
-		+ hand.Size.Y * 0.5
+	return upperArm.Size.Y + lowerArm.Size.Y + hand.Size.Y * 0.5
 end
 
 -- 0 = upper body is free to rotate.
@@ -542,13 +574,8 @@ local function getUpperBodyConstraintAlpha(): number
 	local constraintAlpha = 0
 
 	for _, child in currentHumanoid:GetChildren() do
-		if
-			child:IsA("IKControl")
-			and child.Enabled
-			and child.Weight > 0.001
-		then
-			local endEffector =
-				child.EndEffector
+		if child:IsA("IKControl") and child.Enabled and child.Weight > 0.001 then
+			local endEffector = child.EndEffector
 
 			if endEffector then
 				local side: string? = nil
@@ -560,75 +587,34 @@ local function getUpperBodyConstraintAlpha(): number
 				end
 
 				if side then
-					local targetPosition =
-						getIKTargetWorldPosition(
-							child.Target
+					local targetPosition = getIKTargetWorldPosition(child.Target)
+
+					local shoulderPosition = getShoulderWorldPosition(side)
+
+					local armReach = getApproximateArmReach(side)
+
+					if targetPosition and shoulderPosition and armReach and armReach > 0.001 then
+						local distance = (targetPosition - shoulderPosition).Magnitude
+
+						local reachRatio = distance / armReach
+
+						local reachPressure = math.clamp(
+							(reachRatio - HAND_REACH_SOFT_START) / (HAND_REACH_HARD_START - HAND_REACH_SOFT_START),
+							0,
+							1
 						)
-
-					local shoulderPosition =
-						getShoulderWorldPosition(
-							side
-						)
-
-					local armReach =
-						getApproximateArmReach(
-							side
-						)
-
-					if
-						targetPosition
-						and shoulderPosition
-						and armReach
-						and armReach > 0.001
-					then
-						local distance =
-							(
-								targetPosition
-								- shoulderPosition
-							).Magnitude
-
-						local reachRatio =
-							distance / armReach
-
-						local reachPressure =
-							math.clamp(
-								(
-									reachRatio
-									- HAND_REACH_SOFT_START
-								)
-								/
-								(
-									HAND_REACH_HARD_START
-									- HAND_REACH_SOFT_START
-								),
-								0,
-								1
-							)
 
 						-- Simply having a hand hard-targeted means the torso
 						-- should already be conservative. Reach pressure then
 						-- increases that constraint toward 1.
-						local handConstraint =
-							ACTIVE_HAND_BASE_CONSTRAINT
-							+ (
-								1
-								- ACTIVE_HAND_BASE_CONSTRAINT
-							)
-							* reachPressure
+						local handConstraint = ACTIVE_HAND_BASE_CONSTRAINT
+							+ (1 - ACTIVE_HAND_BASE_CONSTRAINT) * reachPressure
 
-						constraintAlpha =
-							math.max(
-								constraintAlpha,
-								handConstraint
-							)
+						constraintAlpha = math.max(constraintAlpha, handConstraint)
 					else
 						-- An enabled hand IK exists but the rig could not be
 						-- measured. Still use the safe constrained posture.
-						constraintAlpha =
-							math.max(
-								constraintAlpha,
-								ACTIVE_HAND_BASE_CONSTRAINT
-							)
+						constraintAlpha = math.max(constraintAlpha, ACTIVE_HAND_BASE_CONSTRAINT)
 					end
 				end
 			end
@@ -637,7 +623,6 @@ local function getUpperBodyConstraintAlpha(): number
 
 	return constraintAlpha
 end
-
 
 -- Seated camera POSITION only.
 --
@@ -655,34 +640,18 @@ local function getSeatedEyePosition(): Vector3?
 	local currentHead = head
 	local baseNeckC0 = originalNeckC0
 
-	if
-		not currentUpperTorso
-		or not currentHead
-		or not baseNeckC0
-	then
+	if not currentUpperTorso or not currentHead or not baseNeckC0 then
 		return nil
 	end
 
 	-- UpperTorso-side neck joint.
-	local neckBaseWorld =
-		currentUpperTorso.CFrame
-		* baseNeckC0
+	local neckBaseWorld = currentUpperTorso.CFrame * baseNeckC0
 
 	-- Neutral eye position: inside the head, slightly above the neck.
-	local position =
-		neckBaseWorld.Position
-		+ currentUpperTorso.CFrame.UpVector
-		* (
-			currentHead.Size.Y
-			* SEATED_EYE_HEIGHT_FACTOR
-		)
+	local position = neckBaseWorld.Position
+		+ currentUpperTorso.CFrame.UpVector * (currentHead.Size.Y * SEATED_EYE_HEIGHT_FACTOR)
 
-	position +=
-		currentUpperTorso.CFrame.LookVector
-		* (
-			currentHead.Size.Z
-			* SEATED_EYE_FORWARD_FACTOR
-		)
+	position += currentUpperTorso.CFrame.LookVector * (currentHead.Size.Z * SEATED_EYE_FORWARD_FACTOR)
 
 	------------------------------------------------------------
 	-- DOWNWARD HEAD ARC
@@ -694,50 +663,20 @@ local function getSeatedEyePosition(): Vector3?
 	-- create camera <-> Head.CFrame feedback.
 	------------------------------------------------------------
 
-	local downwardPitch =
-		math.max(
-			0,
-			-seatedCameraPitch
-			- SEATED_DOWN_LOOK_START
-		)
+	local downwardPitch = math.max(0, -seatedCameraPitch - SEATED_DOWN_LOOK_START)
 
-	local availablePitch =
-		math.max(
-			0.001,
-			MAX_SEATED_CAMERA_DOWN_PITCH
-			- SEATED_DOWN_LOOK_START
-		)
+	local availablePitch = math.max(0.001, MAX_SEATED_CAMERA_DOWN_PITCH - SEATED_DOWN_LOOK_START)
 
-	local downAlpha =
-		math.clamp(
-			downwardPitch / availablePitch,
-			0,
-			1
-		)
+	local downAlpha = math.clamp(downwardPitch / availablePitch, 0, 1)
 
 	-- Smoothstep: little movement near level, increasingly noticeable
 	-- as the player looks toward their feet.
-	downAlpha =
-		downAlpha
-		* downAlpha
-		* (3 - 2 * downAlpha)
+	downAlpha = downAlpha * downAlpha * (3 - 2 * downAlpha)
 
 	if downAlpha > 0 then
-		position +=
-			currentUpperTorso.CFrame.LookVector
-			* (
-				currentHead.Size.Z
-				* SEATED_DOWN_LOOK_MAX_FORWARD_FACTOR
-				* downAlpha
-			)
+		position += currentUpperTorso.CFrame.LookVector * (currentHead.Size.Z * SEATED_DOWN_LOOK_MAX_FORWARD_FACTOR * downAlpha)
 
-		position -=
-			currentUpperTorso.CFrame.UpVector
-			* (
-				currentHead.Size.Y
-				* SEATED_DOWN_LOOK_MAX_LOWER_FACTOR
-				* downAlpha
-			)
+		position -= currentUpperTorso.CFrame.UpVector * (currentHead.Size.Y * SEATED_DOWN_LOOK_MAX_LOWER_FACTOR * downAlpha)
 	end
 
 	return position
@@ -748,45 +687,64 @@ end
 ----------------------------------------------------------------
 
 local function applyMouseState()
-	local settingsOpen =
-		player:GetAttribute("SettingsOpen") == true
+	local settingsOpen = player:GetAttribute("SettingsOpen") == true
 
-	local releasedOverride =
-		player:GetAttribute("MouseReleased")
+	local releasedOverride = player:GetAttribute("MouseReleased")
 
-	local shouldRelease =
-		if typeof(releasedOverride) == "boolean"
-		then releasedOverride
-		else mouseReleased
+	local shouldRelease = if typeof(releasedOverride) == "boolean" then releasedOverride else mouseReleased
 
-	-- In third person we stop writing MouseBehavior every frame.
-	-- That is important: Roblox CameraModule needs to be able to use its
-	-- normal right-mouse orbit/capture behaviour without this script
-	-- immediately overwriting it.
 	if not firstPersonActive then
 		if settingsOpen or shouldRelease then
-			UserInputService.MouseBehavior =
-				Enum.MouseBehavior.Default
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 
-			UserInputService.MouseIconEnabled =
-				true
+			UserInputService.MouseIconEnabled = true
+
+			return
 		end
 
+		if selectedThirdPersonCameraMode >= 2 then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+
+			UserInputService.MouseIconEnabled = false
+		end
+
+		-- Mode 1 deliberately stops writing MouseBehavior so Roblox's
+		-- third-person CameraModule retains normal RMB orbit behavior.
 		return
 	end
 
 	if settingsOpen or shouldRelease then
-		UserInputService.MouseBehavior =
-			Enum.MouseBehavior.Default
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 
-		UserInputService.MouseIconEnabled =
-			true
+		UserInputService.MouseIconEnabled = true
 	else
-		UserInputService.MouseBehavior =
-			Enum.MouseBehavior.LockCenter
+		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 
-		UserInputService.MouseIconEnabled =
-			false
+		UserInputService.MouseIconEnabled = false
+	end
+end
+
+local function setThirdPersonCameraMode(mode: number, playSound: boolean)
+	selectedThirdPersonCameraMode = math.clamp(math.floor(mode), 1, MAX_THIRD_PERSON_CAMERA_MODE)
+
+	player:SetAttribute("ThirdPersonCameraMode", selectedThirdPersonCameraMode)
+
+	-- Changing the stored preference recaptures the mouse. Entering first
+	-- person never changes this preference, so zoom-out restores it.
+	mouseReleased = false
+	player:SetAttribute("MouseReleased", false)
+
+	if not firstPersonActive and selectedThirdPersonCameraMode == 1 then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+
+		UserInputService.MouseIconEnabled = true
+	end
+
+	updateAbilityManagerTurning()
+	applyMouseState()
+
+	if playSound then
+		playCameraModeToggleSound()
 	end
 end
 
@@ -794,89 +752,57 @@ end
 -- VISIBILITY
 ----------------------------------------------------------------
 
-local function isAccessoryPart(
-	part: BasePart
-): boolean
-	return
-		part:FindFirstAncestorOfClass("Accessory")
-		~= nil
+local function isAccessoryPart(part: BasePart): boolean
+	return part:FindFirstAncestorOfClass("Accessory") ~= nil
 end
 
-local function applyVisibilityToPart(
-	part: BasePart
-)
+local function applyVisibilityToPart(part: BasePart)
 	if originalLocalTransparency[part] == nil then
-		originalLocalTransparency[part] =
-			part.LocalTransparencyModifier
+		local loadingOriginalTransparency = part:GetAttribute(LOADING_ORIGINAL_TRANSPARENCY_ATTRIBUTE)
+
+		originalLocalTransparency[part] = if typeof(loadingOriginalTransparency) == "number"
+			then loadingOriginalTransparency
+			else part.LocalTransparencyModifier
 	end
 
-	local originalTransparency =
-		originalLocalTransparency[part] or 0
+	local originalTransparency = originalLocalTransparency[part] or 0
 
-	if
-		part == head
-		or isAccessoryPart(part)
-	then
-		part.LocalTransparencyModifier =
-			lerpNumber(
-				originalTransparency,
-				1,
-				firstPersonVisibilityAlpha
-			)
+	if player:GetAttribute(SPARK_INITIAL_LOAD_COMPLETE_ATTRIBUTE) == false then
+		part.LocalTransparencyModifier = 1
+		return
+	end
+
+	if part == head or isAccessoryPart(part) then
+		part.LocalTransparencyModifier = lerpNumber(originalTransparency, 1, firstPersonVisibilityAlpha)
 	else
 		-- Roblox's own first-person transparency controller normally hides
 		-- the entire local character. Running after CameraModule lets this
 		-- custom controller restore the body while only hiding the head and
 		-- accessories.
-		part.LocalTransparencyModifier =
-			originalTransparency
+		part.LocalTransparencyModifier = originalTransparency
 	end
 end
 
-local function updateCharacterVisibility(
-	dt: number
-)
+local function updateCharacterVisibility(dt: number)
 	local currentCharacter = character
 
 	if not currentCharacter then
 		return
 	end
 
-	local targetAlpha =
-		if firstPersonActive
-		then 1
-		else 0
+	local targetAlpha = if firstPersonActive then 1 else 0
 
-	local visibilitySpeed =
-		if firstPersonActive
-		then FIRST_PERSON_HIDE_SPEED
-		else THIRD_PERSON_SHOW_SPEED
+	local visibilitySpeed = if firstPersonActive then FIRST_PERSON_HIDE_SPEED else THIRD_PERSON_SHOW_SPEED
 
-	firstPersonVisibilityAlpha =
-		lerpNumber(
-			firstPersonVisibilityAlpha,
-			targetAlpha,
-			expAlpha(
-				visibilitySpeed,
-				dt
-			)
-		)
+	firstPersonVisibilityAlpha = lerpNumber(firstPersonVisibilityAlpha, targetAlpha, expAlpha(visibilitySpeed, dt))
 
 	-- Snap the tiny exponential tail so accessories eventually reach
 	-- their exact original transparency.
-	if
-		math.abs(
-			firstPersonVisibilityAlpha
-			- targetAlpha
-		) < 0.001
-	then
-		firstPersonVisibilityAlpha =
-			targetAlpha
+	if math.abs(firstPersonVisibilityAlpha - targetAlpha) < 0.001 then
+		firstPersonVisibilityAlpha = targetAlpha
 	end
 
-	for _, descendant
-		in currentCharacter:GetDescendants()
-	do
+	for _, descendant in currentCharacter:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			applyVisibilityToPart(descendant)
 		end
@@ -904,12 +830,9 @@ local function restoreDefaultCamera()
 
 	if currentHumanoid then
 		if firstPersonActive then
-			currentHumanoid.CameraOffset =
-				STANDING_CAMERA_OFFSET
+			currentHumanoid.CameraOffset = STANDING_CAMERA_OFFSET
 		else
-			currentHumanoid.CameraOffset =
-				originalCameraOffset
-				or Vector3.zero
+			currentHumanoid.CameraOffset = originalCameraOffset or Vector3.zero
 		end
 	end
 end
@@ -922,12 +845,9 @@ local function updateCameraOffsetForMode()
 	end
 
 	if firstPersonActive then
-		currentHumanoid.CameraOffset =
-			STANDING_CAMERA_OFFSET
+		currentHumanoid.CameraOffset = STANDING_CAMERA_OFFSET
 	else
-		currentHumanoid.CameraOffset =
-			originalCameraOffset
-			or Vector3.zero
+		currentHumanoid.CameraOffset = originalCameraOffset or Vector3.zero
 	end
 end
 
@@ -960,12 +880,7 @@ local function createLookIK()
 	local currentLowerTorso = lowerTorso
 	local currentRoot = rootPart
 
-	if
-		not currentHumanoid
-		or not currentUpperTorso
-		or not currentLowerTorso
-		or not currentRoot
-	then
+	if not currentHumanoid or not currentUpperTorso or not currentLowerTorso or not currentRoot then
 		return
 	end
 
@@ -976,12 +891,7 @@ local function createLookIK()
 	local target = Instance.new("Part")
 	target.Name = "FirstPersonTorsoLookTarget"
 
-	target.Size =
-		Vector3.new(
-			0.1,
-			0.1,
-			0.1
-		)
+	target.Size = Vector3.new(0.1, 0.1, 0.1)
 
 	target.Anchored = true
 	target.CanCollide = false
@@ -1000,32 +910,24 @@ local function createLookIK()
 
 	local standingIK = Instance.new("IKControl")
 
-	standingIK.Name =
-		"StandingUpperTorsoLookIK"
+	standingIK.Name = "StandingUpperTorsoLookIK"
 
-	standingIK.Type =
-		Enum.IKControlType.LookAt
+	standingIK.Type = Enum.IKControlType.LookAt
 
-	standingIK.ChainRoot =
-		currentLowerTorso
+	standingIK.ChainRoot = currentLowerTorso
 
-	standingIK.EndEffector =
-		currentUpperTorso
+	standingIK.EndEffector = currentUpperTorso
 
-	standingIK.Target =
-		target
+	standingIK.Target = target
 
-	standingIK.Weight =
-		STANDING_TORSO_IK_WEIGHT
+	standingIK.Weight = STANDING_TORSO_IK_WEIGHT
 
 	standingIK.Priority = STANDING_TORSO_IK_PRIORITY
 	standingIK.Enabled = true
 
-	standingIK.Parent =
-		currentHumanoid
+	standingIK.Parent = currentHumanoid
 
-	standingTorsoIK =
-		standingIK
+	standingTorsoIK = standingIK
 
 	------------------------------------------------------------
 	-- SEATED UPPER-BODY LOOK ASSIST
@@ -1036,30 +938,23 @@ local function createLookIK()
 
 	local seatedIK = Instance.new("IKControl")
 
-	seatedIK.Name =
-		"SeatedBodyTurnIK"
+	seatedIK.Name = "SeatedBodyTurnIK"
 
-	seatedIK.Type =
-		Enum.IKControlType.LookAt
+	seatedIK.Type = Enum.IKControlType.LookAt
 
-	seatedIK.ChainRoot =
-		currentLowerTorso
+	seatedIK.ChainRoot = currentLowerTorso
 
-	seatedIK.EndEffector =
-		currentUpperTorso
+	seatedIK.EndEffector = currentUpperTorso
 
-	seatedIK.Target =
-		target
+	seatedIK.Target = target
 
 	seatedIK.Weight = 0
 	seatedIK.Priority = 1
 	seatedIK.Enabled = false
 
-	seatedIK.Parent =
-		currentHumanoid
+	seatedIK.Parent = currentHumanoid
 
-	seatedBodyTurnIK =
-		seatedIK
+	seatedBodyTurnIK = seatedIK
 end
 
 ----------------------------------------------------------------
@@ -1067,12 +962,14 @@ end
 ----------------------------------------------------------------
 
 local function restorePreviousCharacter()
-	if
-		neck
-		and originalNeckC0
-	then
-		neck.C0 =
-			originalNeckC0
+	if abilityManagerTurning and abilityManagerTurning.Parent then
+		abilityManagerTurning:SetAttribute("UseLookDirectionInput", false)
+	end
+
+	abilityManagerTurning = nil
+
+	if neck and originalNeckC0 then
+		neck.C0 = originalNeckC0
 	end
 
 	destroyLookIK()
@@ -1086,26 +983,17 @@ local function restorePreviousCharacter()
 
 	local currentHumanoid = humanoid
 
-	if
-		currentHumanoid
-		and originalCameraOffset
-	then
-		currentHumanoid.CameraOffset =
-			originalCameraOffset
+	if currentHumanoid and originalCameraOffset then
+		currentHumanoid.CameraOffset = originalCameraOffset
 	end
 
-	for part, transparency
-		in originalLocalTransparency
-	do
+	for part, transparency in originalLocalTransparency do
 		if part.Parent then
-			part.LocalTransparencyModifier =
-				transparency
+			part.LocalTransparencyModifier = transparency
 		end
 	end
 
-	table.clear(
-		originalLocalTransparency
-	)
+	table.clear(originalLocalTransparency)
 
 	if characterDescendantAddedConnection then
 		characterDescendantAddedConnection:Disconnect()
@@ -1117,25 +1005,18 @@ end
 -- CHARACTER SETUP
 ----------------------------------------------------------------
 
-local function setupCharacter(
-	newCharacter: Model
-)
+local function setupCharacter(newCharacter: Model)
 	restorePreviousCharacter()
 
-	character =
-		newCharacter
+	character = newCharacter
 
-	humanoid =
-		newCharacter:FindFirstChildOfClass(
-			"Humanoid"
-		)
+	humanoid = newCharacter:FindFirstChildOfClass("Humanoid")
 
 	------------------------------------------------------------
 	-- HEAD
 	------------------------------------------------------------
 
-	local foundHead =
-		newCharacter:WaitForChild("Head")
+	local foundHead = newCharacter:WaitForChild("Head")
 
 	if foundHead:IsA("BasePart") then
 		head = foundHead
@@ -1147,10 +1028,7 @@ local function setupCharacter(
 	-- ROOT
 	------------------------------------------------------------
 
-	local foundRoot =
-		newCharacter:WaitForChild(
-			"HumanoidRootPart"
-		)
+	local foundRoot = newCharacter:WaitForChild("HumanoidRootPart")
 
 	if foundRoot:IsA("BasePart") then
 		rootPart = foundRoot
@@ -1162,43 +1040,24 @@ local function setupCharacter(
 	-- UPPER TORSO
 	------------------------------------------------------------
 
-	local upperCandidate =
-		newCharacter:FindFirstChild(
-			"UpperTorso"
-		)
-		or newCharacter:FindFirstChild(
-			"Torso"
-		)
+	local upperCandidate = newCharacter:FindFirstChild("UpperTorso") or newCharacter:FindFirstChild("Torso")
 
-	if
-		upperCandidate
-		and upperCandidate:IsA("BasePart")
-	then
-		upperTorso =
-			upperCandidate
+	if upperCandidate and upperCandidate:IsA("BasePart") then
+		upperTorso = upperCandidate
 	else
-		upperTorso =
-			nil
+		upperTorso = nil
 	end
 
 	------------------------------------------------------------
 	-- LOWER TORSO
 	------------------------------------------------------------
 
-	local lowerCandidate =
-		newCharacter:FindFirstChild(
-			"LowerTorso"
-		)
+	local lowerCandidate = newCharacter:FindFirstChild("LowerTorso")
 
-	if
-		lowerCandidate
-		and lowerCandidate:IsA("BasePart")
-	then
-		lowerTorso =
-			lowerCandidate
+	if lowerCandidate and lowerCandidate:IsA("BasePart") then
+		lowerTorso = lowerCandidate
 	else
-		lowerTorso =
-			nil
+		lowerTorso = nil
 	end
 
 	------------------------------------------------------------
@@ -1209,20 +1068,12 @@ local function setupCharacter(
 	originalNeckC0 = nil
 
 	if upperTorso then
-		local possibleNeck =
-			upperTorso:FindFirstChild(
-				"Neck"
-			)
+		local possibleNeck = upperTorso:FindFirstChild("Neck")
 
-		if
-			possibleNeck
-			and possibleNeck:IsA("Motor6D")
-		then
-			neck =
-				possibleNeck
+		if possibleNeck and possibleNeck:IsA("Motor6D") then
+			neck = possibleNeck
 
-			originalNeckC0 =
-				possibleNeck.C0
+			originalNeckC0 = possibleNeck.C0
 		end
 	end
 
@@ -1233,13 +1084,11 @@ local function setupCharacter(
 	originalCameraOffset = nil
 
 	if humanoid then
-		originalCameraOffset =
-			humanoid.CameraOffset
+		originalCameraOffset = humanoid.CameraOffset
 
 		-- Start by yielding to Roblox until the zoom detector confirms
 		-- that the camera is actually at first-person distance.
-		humanoid.CameraOffset =
-			originalCameraOffset
+		humanoid.CameraOffset = originalCameraOffset
 	end
 
 	------------------------------------------------------------
@@ -1259,10 +1108,7 @@ local function setupCharacter(
 	waitingForSeatedZoomOut = false
 	firstPersonVisibilityAlpha = 0
 
-	player:SetAttribute(
-		"TrueFirstPersonActive",
-		false
-	)
+	player:SetAttribute("TrueFirstPersonActive", false)
 
 	------------------------------------------------------------
 	-- IK
@@ -1276,19 +1122,25 @@ local function setupCharacter(
 
 	updateCharacterVisibility(0)
 
-	characterDescendantAddedConnection =
-		newCharacter.DescendantAdded:Connect(
-			function(descendant)
-				if descendant:IsA("BasePart") then
-					applyVisibilityToPart(
-						descendant
-					)
-				end
-			end
-		)
+	characterDescendantAddedConnection = newCharacter.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("BasePart") then
+			applyVisibilityToPart(descendant)
+		end
+	end)
 
 	ensureZoomableCameraMode()
 	applyMouseState()
+
+	task.spawn(function()
+		local turning = getAbilityManagerTurning(newCharacter)
+
+		if character ~= newCharacter or not turning then
+			return
+		end
+
+		abilityManagerTurning = turning
+		updateAbilityManagerTurning()
+	end)
 end
 
 ----------------------------------------------------------------
@@ -1296,25 +1148,17 @@ end
 ----------------------------------------------------------------
 
 local function updateSeatedCamera()
-	local camera =
-		Workspace.CurrentCamera
+	local camera = Workspace.CurrentCamera
 
-	local currentRoot =
-		rootPart
+	local currentRoot = rootPart
 
-	local reference =
-		getFlatRootReference()
+	local reference = getFlatRootReference()
 
-	if
-		not camera
-		or not currentRoot
-		or not reference
-	then
+	if not camera or not currentRoot or not reference then
 		return
 	end
 
-	local seated =
-		isCurrentlySeated()
+	local seated = isCurrentlySeated()
 
 	------------------------------------------------------------
 	-- THIRD PERSON
@@ -1323,10 +1167,7 @@ local function updateSeatedCamera()
 	-- Zoomed out means this controller completely yields camera ownership
 	-- back to Roblox, including while seated.
 	if not firstPersonActive then
-		if
-			wasSeated
-			or camera.CameraType == Enum.CameraType.Scriptable
-		then
+		if wasSeated or camera.CameraType == Enum.CameraType.Scriptable then
 			restoreDefaultCamera()
 		end
 
@@ -1358,55 +1199,25 @@ local function updateSeatedCamera()
 	-- ENTERING SEAT
 	------------------------------------------------------------
 
-	local justSatDown =
-		not wasSeated
+	local justSatDown = not wasSeated
 
 	if justSatDown then
-		local localLook =
-			reference:VectorToObjectSpace(
-				camera.CFrame.LookVector
-			)
+		local localLook = reference:VectorToObjectSpace(camera.CFrame.LookVector)
 
-		seatedCameraPitch =
-			math.asin(
-				math.clamp(
-					localLook.Y,
-					-1,
-					1
-				)
-			)
+		seatedCameraPitch = math.asin(math.clamp(localLook.Y, -1, 1))
 
-		seatedCameraYaw =
-			math.atan2(
-				-localLook.X,
-				-localLook.Z
-			)
+		seatedCameraYaw = math.atan2(-localLook.X, -localLook.Z)
 
-		seatedCameraYaw =
-			math.clamp(
-				seatedCameraYaw,
-				-getMaxSeatedCameraYaw(),
-				getMaxSeatedCameraYaw()
-			)
+		seatedCameraYaw = math.clamp(seatedCameraYaw, -getMaxSeatedCameraYaw(), getMaxSeatedCameraYaw())
 
-		seatedCameraPitch =
-			math.clamp(
-				seatedCameraPitch,
-				-MAX_SEATED_CAMERA_DOWN_PITCH,
-				MAX_SEATED_CAMERA_UP_PITCH
-			)
+		seatedCameraPitch = math.clamp(seatedCameraPitch, -MAX_SEATED_CAMERA_DOWN_PITCH, MAX_SEATED_CAMERA_UP_PITCH)
 
-		camera.CameraType =
-			Enum.CameraType.Scriptable
+		camera.CameraType = Enum.CameraType.Scriptable
 
 		wasSeated = true
 	else
-		if
-			camera.CameraType
-			~= Enum.CameraType.Scriptable
-		then
-			camera.CameraType =
-				Enum.CameraType.Scriptable
+		if camera.CameraType ~= Enum.CameraType.Scriptable then
+			camera.CameraType = Enum.CameraType.Scriptable
 		end
 	end
 
@@ -1414,65 +1225,35 @@ local function updateSeatedCamera()
 	-- INPUT
 	------------------------------------------------------------
 
-	if
-		not justSatDown
-		and UserInputService.MouseBehavior
-		== Enum.MouseBehavior.LockCenter
-	then
-		local mouseDelta =
-			UserInputService:GetMouseDelta()
+	if not justSatDown and UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+		local mouseDelta = UserInputService:GetMouseDelta()
 
-		seatedCameraYaw -=
-			mouseDelta.X
-			* SEATED_MOUSE_SENSITIVITY
+		seatedCameraYaw -= mouseDelta.X * SEATED_MOUSE_SENSITIVITY
 
-		seatedCameraPitch -=
-			mouseDelta.Y
-			* SEATED_MOUSE_SENSITIVITY
+		seatedCameraPitch -= mouseDelta.Y * SEATED_MOUSE_SENSITIVITY
 	end
 
 	------------------------------------------------------------
 	-- HARD LIMITS
 	------------------------------------------------------------
 
-	seatedCameraYaw =
-		math.clamp(
-			seatedCameraYaw,
-			-getMaxSeatedCameraYaw(),
-			getMaxSeatedCameraYaw()
-		)
+	seatedCameraYaw = math.clamp(seatedCameraYaw, -getMaxSeatedCameraYaw(), getMaxSeatedCameraYaw())
 
-	seatedCameraPitch =
-		math.clamp(
-			seatedCameraPitch,
-			-MAX_SEATED_CAMERA_DOWN_PITCH,
-			MAX_SEATED_CAMERA_UP_PITCH
-		)
+	seatedCameraPitch = math.clamp(seatedCameraPitch, -MAX_SEATED_CAMERA_DOWN_PITCH, MAX_SEATED_CAMERA_UP_PITCH)
 
 	------------------------------------------------------------
 	-- CAMERA DIRECTION
 	------------------------------------------------------------
 
-	local cosPitch =
-		math.cos(
-			seatedCameraPitch
-		)
+	local cosPitch = math.cos(seatedCameraPitch)
 
-	local localDirection =
-		Vector3.new(
-			-math.sin(seatedCameraYaw)
-			* cosPitch,
+	local localDirection = Vector3.new(
+		-math.sin(seatedCameraYaw) * cosPitch,
+		math.sin(seatedCameraPitch),
+		-math.cos(seatedCameraYaw) * cosPitch
+	)
 
-			math.sin(seatedCameraPitch),
-
-			-math.cos(seatedCameraYaw)
-			* cosPitch
-		)
-
-	local worldDirection =
-		reference:VectorToWorldSpace(
-			localDirection
-		)
+	local worldDirection = reference:VectorToWorldSpace(localDirection)
 
 	------------------------------------------------------------
 	-- HEAD / NECK-BASE CAMERA POSITION
@@ -1482,53 +1263,32 @@ local function updateSeatedCamera()
 	-- create a camera <-> neck feedback loop.
 	------------------------------------------------------------
 
-	local cameraPosition =
-		getSeatedEyePosition()
+	local cameraPosition = getSeatedEyePosition()
 
 	if not cameraPosition then
 		-- R15 fallback only; normally getSeatedEyePosition succeeds.
-		cameraPosition =
-			currentRoot.Position
-			+ Vector3.new(0, 1.5, 0)
+		cameraPosition = currentRoot.Position + Vector3.new(0, 1.5, 0)
 	end
 
-	camera.CFrame =
-		CFrame.lookAt(
-			cameraPosition,
-			cameraPosition + worldDirection,
-			Vector3.yAxis
-		)
+	camera.CFrame = CFrame.lookAt(cameraPosition, cameraPosition + worldDirection, Vector3.yAxis)
 end
 
 ----------------------------------------------------------------
 -- TORSO IK
 ----------------------------------------------------------------
 
-local function updateTorsoIK(
-	dt: number
-)
-	local camera =
-		Workspace.CurrentCamera
+local function updateTorsoIK(dt: number)
+	local camera = Workspace.CurrentCamera
 
-	local standingIK =
-		standingTorsoIK
+	local standingIK = standingTorsoIK
 
-	local seatedIK =
-		seatedBodyTurnIK
+	local seatedIK = seatedBodyTurnIK
 
-	local target =
-		torsoIKTarget
+	local target = torsoIKTarget
 
-	local currentUpperTorso =
-		upperTorso
+	local currentUpperTorso = upperTorso
 
-	if
-		not camera
-		or not standingIK
-		or not seatedIK
-		or not target
-		or not currentUpperTorso
-	then
+	if not camera or not standingIK or not seatedIK or not target or not currentUpperTorso then
 		return
 	end
 
@@ -1543,46 +1303,22 @@ local function updateTorsoIK(
 		seatedIK.Enabled = false
 		seatedIK.Weight = 0
 
-		local returnAlpha =
-			expAlpha(
-				TORSO_FOLLOW_SPEED,
-				dt
-			)
+		local returnAlpha = expAlpha(TORSO_FOLLOW_SPEED, dt)
 
-		currentTorsoYaw =
-			lerpNumber(
-				currentTorsoYaw,
-				0,
-				returnAlpha
-			)
+		currentTorsoYaw = lerpNumber(currentTorsoYaw, 0, returnAlpha)
 
-		currentTorsoPitch =
-			lerpNumber(
-				currentTorsoPitch,
-				0,
-				returnAlpha
-			)
+		currentTorsoPitch = lerpNumber(currentTorsoPitch, 0, returnAlpha)
 
-		player:SetAttribute(
-			"SeatedTorsoYaw",
-			0
-		)
+		player:SetAttribute("SeatedTorsoYaw", 0)
 
-		player:SetAttribute(
-			"SeatedTorsoPitch",
-			0
-		)
+		player:SetAttribute("SeatedTorsoPitch", 0)
 
-		player:SetAttribute(
-			"UpperBodyConstraintAlpha",
-			0
-		)
+		player:SetAttribute("UpperBodyConstraintAlpha", 0)
 
 		return
 	end
 
-	local seated =
-		isCurrentlySeated()
+	local seated = isCurrentlySeated()
 
 	------------------------------------------------------------
 	-- STANDING
@@ -1600,8 +1336,10 @@ local function updateTorsoIK(
 
 		if
 			currentHumanoid
-			and currentHumanoid:GetState()
-			== Enum.HumanoidStateType.Swimming
+			and (
+				currentHumanoid:GetState() == Enum.HumanoidStateType.Swimming
+				or (character ~= nil and character:GetAttribute("IsSwimming") == true)
+			)
 		then
 			standingIK.Enabled = false
 			standingIK.Weight = 0
@@ -1622,8 +1360,7 @@ local function updateTorsoIK(
 		-- so hips / legs / feet never join the look pose.
 		--------------------------------------------------------
 
-		local reference =
-			getFlatRootReference()
+		local reference = getFlatRootReference()
 
 		if not reference then
 			standingIK.Enabled = false
@@ -1631,33 +1368,14 @@ local function updateTorsoIK(
 			return
 		end
 
-		local localLook =
-			reference:VectorToObjectSpace(
-				camera.CFrame.LookVector
-			)
+		local localLook = reference:VectorToObjectSpace(camera.CFrame.LookVector)
 
-		local cameraYaw =
-			math.atan2(
-				-localLook.X,
-				-localLook.Z
-			)
+		local cameraYaw = math.atan2(-localLook.X, -localLook.Z)
 
-		local cameraPitch =
-			math.asin(
-				math.clamp(
-					localLook.Y,
-					-1,
-					1
-				)
-			)
+		local cameraPitch = math.asin(math.clamp(localLook.Y, -1, 1))
 
 		local torsoYaw =
-			math.clamp(
-				cameraYaw
-				* STANDING_TORSO_YAW_SHARE,
-				-MAX_STANDING_TORSO_YAW,
-				MAX_STANDING_TORSO_YAW
-			)
+			math.clamp(cameraYaw * STANDING_TORSO_YAW_SHARE, -MAX_STANDING_TORSO_YAW, MAX_STANDING_TORSO_YAW)
 
 		-- IMPORTANT:
 		-- Downward pitch never reaches the standing torso IK.
@@ -1667,73 +1385,32 @@ local function updateTorsoIK(
 		local torsoPitch = 0
 
 		if cameraPitch > 0 then
-			torsoPitch =
-				math.clamp(
-					cameraPitch
-					* STANDING_TORSO_UP_PITCH_SHARE,
-					0,
-					MAX_STANDING_TORSO_UP_PITCH
-				)
+			torsoPitch = math.clamp(cameraPitch * STANDING_TORSO_UP_PITCH_SHARE, 0, MAX_STANDING_TORSO_UP_PITCH)
 		end
 
-		local cosPitch =
-			math.cos(torsoPitch)
+		local cosPitch = math.cos(torsoPitch)
 
 		local torsoDirectionLocal =
-			Vector3.new(
-				-math.sin(torsoYaw) * cosPitch,
-				math.sin(torsoPitch),
-				-math.cos(torsoYaw) * cosPitch
-			)
+			Vector3.new(-math.sin(torsoYaw) * cosPitch, math.sin(torsoPitch), -math.cos(torsoYaw) * cosPitch)
 
-		local torsoDirectionWorld =
-			reference:VectorToWorldSpace(
-				torsoDirectionLocal
-			)
+		local torsoDirectionWorld = reference:VectorToWorldSpace(torsoDirectionLocal)
 
 		standingIK.Enabled = true
-		standingIK.Weight =
-			STANDING_TORSO_IK_WEIGHT
+		standingIK.Weight = STANDING_TORSO_IK_WEIGHT
 
-		target.Position =
-			currentUpperTorso.Position
-			+ torsoDirectionWorld
-			* TORSO_TARGET_DISTANCE
+		target.Position = currentUpperTorso.Position + torsoDirectionWorld * TORSO_TARGET_DISTANCE
 
-		local alpha =
-			expAlpha(
-				TORSO_FOLLOW_SPEED,
-				dt
-			)
+		local alpha = expAlpha(TORSO_FOLLOW_SPEED, dt)
 
-		currentTorsoYaw =
-			lerpNumber(
-				currentTorsoYaw,
-				0,
-				alpha
-			)
+		currentTorsoYaw = lerpNumber(currentTorsoYaw, 0, alpha)
 
-		currentTorsoPitch =
-			lerpNumber(
-				currentTorsoPitch,
-				0,
-				alpha
-			)
+		currentTorsoPitch = lerpNumber(currentTorsoPitch, 0, alpha)
 
-		player:SetAttribute(
-			"SeatedTorsoYaw",
-			0
-		)
+		player:SetAttribute("SeatedTorsoYaw", 0)
 
-		player:SetAttribute(
-			"SeatedTorsoPitch",
-			0
-		)
+		player:SetAttribute("SeatedTorsoPitch", 0)
 
-		player:SetAttribute(
-			"UpperBodyConstraintAlpha",
-			0
-		)
+		player:SetAttribute("UpperBodyConstraintAlpha", 0)
 
 		return
 	end
@@ -1745,13 +1422,9 @@ local function updateTorsoIK(
 
 	standingIK.Enabled = false
 
-	local absoluteYaw =
-		math.abs(
-			seatedCameraYaw
-		)
+	local absoluteYaw = math.abs(seatedCameraYaw)
 
-	local maxSeatedCameraYaw =
-		getMaxSeatedCameraYaw()
+	local maxSeatedCameraYaw = getMaxSeatedCameraYaw()
 
 	------------------------------------------------------------
 	-- SMALL SHOULDER YAW
@@ -1760,34 +1433,18 @@ local function updateTorsoIK(
 	-- The head therefore carries roughly the remaining ~78 degrees.
 	------------------------------------------------------------
 
-	local yawAlpha =
-		math.clamp(
-			(
-				absoluteYaw
-				- TORSO_ASSIST_START_YAW
-			)
-			/
-			math.max(
-				0.001,
-				maxSeatedCameraYaw
-				- TORSO_ASSIST_START_YAW
-			),
-			0,
-			1
-		)
+	local yawAlpha = math.clamp(
+		(absoluteYaw - TORSO_ASSIST_START_YAW) / math.max(0.001, maxSeatedCameraYaw - TORSO_ASSIST_START_YAW),
+		0,
+		1
+	)
 
-	yawAlpha =
-		smoothstep01(
-			yawAlpha
-		)
+	yawAlpha = smoothstep01(yawAlpha)
 
-	local targetTorsoYaw =
-		MAX_SEATED_TORSO_YAW
-		* yawAlpha
+	local targetTorsoYaw = MAX_SEATED_TORSO_YAW * yawAlpha
 
 	if seatedCameraYaw < 0 then
-		targetTorsoYaw =
-			-targetTorsoYaw
+		targetTorsoYaw = -targetTorsoYaw
 	end
 
 	------------------------------------------------------------
@@ -1799,168 +1456,81 @@ local function updateTorsoIK(
 	------------------------------------------------------------
 
 	local yawLeanAlpha =
-		math.clamp(
-			(
-				absoluteYaw
-				- YAW_LEAN_START
-			)
-			/
-			math.max(
-				0.001,
-				maxSeatedCameraYaw
-				- YAW_LEAN_START
-			),
-			0,
-			1
-		)
+		math.clamp((absoluteYaw - YAW_LEAN_START) / math.max(0.001, maxSeatedCameraYaw - YAW_LEAN_START), 0, 1)
 
-	yawLeanAlpha =
-		smoothstep01(
-			yawLeanAlpha
-		)
+	yawLeanAlpha = smoothstep01(yawLeanAlpha)
 
-	local yawForwardLean =
-		MAX_YAW_FORWARD_LEAN
-		* yawLeanAlpha
+	local yawForwardLean = MAX_YAW_FORWARD_LEAN * yawLeanAlpha
 
 	------------------------------------------------------------
 	-- CAMERA PITCH -> SMALL TORSO PITCH
 	------------------------------------------------------------
 
-	local cameraPitchContribution =
-		seatedCameraPitch
-		* TORSO_PITCH_SHARE
+	local cameraPitchContribution = seatedCameraPitch * TORSO_PITCH_SHARE
 
 	-- Negative pitch means forward/downward in this target convention.
-	local targetTorsoPitch =
-		cameraPitchContribution
-	- yawForwardLean
+	local targetTorsoPitch = cameraPitchContribution - yawForwardLean
 
-	targetTorsoPitch =
-		math.clamp(
-			targetTorsoPitch,
-			-MAX_SEATED_TORSO_DOWN_PITCH,
-			MAX_SEATED_TORSO_UP_PITCH
-		)
+	targetTorsoPitch = math.clamp(targetTorsoPitch, -MAX_SEATED_TORSO_DOWN_PITCH, MAX_SEATED_TORSO_UP_PITCH)
 
 	------------------------------------------------------------
 	-- SMOOTH BODY STATE
 	------------------------------------------------------------
 
-	local alpha =
-		expAlpha(
-			TORSO_FOLLOW_SPEED,
-			dt
-		)
+	local alpha = expAlpha(TORSO_FOLLOW_SPEED, dt)
 
-	currentTorsoYaw =
-		lerpNumber(
-			currentTorsoYaw,
-			targetTorsoYaw,
-			alpha
-		)
+	currentTorsoYaw = lerpNumber(currentTorsoYaw, targetTorsoYaw, alpha)
 
-	currentTorsoPitch =
-		lerpNumber(
-			currentTorsoPitch,
-			targetTorsoPitch,
-			alpha
-		)
+	currentTorsoPitch = lerpNumber(currentTorsoPitch, targetTorsoPitch, alpha)
 
 	------------------------------------------------------------
 	-- BODY IK WEIGHT
 	------------------------------------------------------------
 
-	local yawWeight =
-		math.clamp(
-			(
-				absoluteYaw
-				- TORSO_ASSIST_START_YAW
-			)
-			/
-			math.max(
-				0.001,
-				TORSO_IK_FULL_WEIGHT_YAW
-				- TORSO_ASSIST_START_YAW
-			),
-			0,
-			1
-		)
+	local yawWeight = math.clamp(
+		(absoluteYaw - TORSO_ASSIST_START_YAW) / math.max(0.001, TORSO_IK_FULL_WEIGHT_YAW - TORSO_ASSIST_START_YAW),
+		0,
+		1
+	)
 
-	yawWeight =
-		smoothstep01(
-			yawWeight
-		)
+	yawWeight = smoothstep01(yawWeight)
 
-	local pitchMagnitude =
-		math.abs(
-			seatedCameraPitch
-		)
+	local pitchMagnitude = math.abs(seatedCameraPitch)
 
-	local pitchWeight =
-		math.clamp(
-			(
-				pitchMagnitude
-				- TORSO_PITCH_ASSIST_START
-			)
-			/
-			math.max(
-				0.001,
-				TORSO_PITCH_FULL_WEIGHT
-				- TORSO_PITCH_ASSIST_START
-			),
-			0,
-			1
-		)
+	local pitchWeight = math.clamp(
+		(pitchMagnitude - TORSO_PITCH_ASSIST_START)
+			/ math.max(0.001, TORSO_PITCH_FULL_WEIGHT - TORSO_PITCH_ASSIST_START),
+		0,
+		1
+	)
 
-	pitchWeight =
-		smoothstep01(
-			pitchWeight
-		)
+	pitchWeight = smoothstep01(pitchWeight)
 
-	local leanWeight =
-		yawLeanAlpha
+	local leanWeight = yawLeanAlpha
 
-	local bodyWeight =
-		math.max(
-			yawWeight,
-			pitchWeight,
-			leanWeight
-		)
+	local bodyWeight = math.max(yawWeight, pitchWeight, leanWeight)
 
 	if bodyWeight <= 0.001 then
 		seatedIK.Enabled = false
 		seatedIK.Weight = 0
 
-		player:SetAttribute(
-			"SeatedTorsoYaw",
-			math.deg(currentTorsoYaw)
-		)
+		player:SetAttribute("SeatedTorsoYaw", math.deg(currentTorsoYaw))
 
-		player:SetAttribute(
-			"SeatedTorsoPitch",
-			math.deg(currentTorsoPitch)
-		)
+		player:SetAttribute("SeatedTorsoPitch", math.deg(currentTorsoPitch))
 
-		player:SetAttribute(
-			"UpperBodyConstraintAlpha",
-			0
-		)
+		player:SetAttribute("UpperBodyConstraintAlpha", 0)
 
 		return
 	end
 
 	seatedIK.Enabled = true
-	seatedIK.Weight =
-		SEATED_BODY_IK_WEIGHT
-		* bodyWeight
+	seatedIK.Weight = SEATED_BODY_IK_WEIGHT * bodyWeight
 
 	------------------------------------------------------------
 	-- YAW + PITCH LOOK TARGET
 	------------------------------------------------------------
 
-	local reference =
-		getFlatRootReference()
+	local reference = getFlatRootReference()
 
 	if not reference then
 		seatedIK.Enabled = false
@@ -1968,77 +1538,43 @@ local function updateTorsoIK(
 		return
 	end
 
-	local cosPitch =
-		math.cos(
-			currentTorsoPitch
-		)
+	local cosPitch = math.cos(currentTorsoPitch)
 
-	local torsoDirectionLocal =
-		Vector3.new(
-			-math.sin(currentTorsoYaw)
-			* cosPitch,
+	local torsoDirectionLocal = Vector3.new(
+		-math.sin(currentTorsoYaw) * cosPitch,
+		math.sin(currentTorsoPitch),
+		-math.cos(currentTorsoYaw) * cosPitch
+	)
 
-			math.sin(currentTorsoPitch),
+	local torsoDirectionWorld = reference:VectorToWorldSpace(torsoDirectionLocal)
 
-			-math.cos(currentTorsoYaw)
-			* cosPitch
-		)
-
-	local torsoDirectionWorld =
-		reference:VectorToWorldSpace(
-			torsoDirectionLocal
-		)
-
-	target.Position =
-		currentUpperTorso.Position
-		+ torsoDirectionWorld
-		* TORSO_TARGET_DISTANCE
+	target.Position = currentUpperTorso.Position + torsoDirectionWorld * TORSO_TARGET_DISTANCE
 
 	------------------------------------------------------------
 	-- EXPOSE STATE FOR STEERING / HELD-OBJECT SYSTEMS
 	------------------------------------------------------------
 
-	player:SetAttribute(
-		"SeatedTorsoYaw",
-		math.deg(currentTorsoYaw)
-	)
+	player:SetAttribute("SeatedTorsoYaw", math.deg(currentTorsoYaw))
 
-	player:SetAttribute(
-		"SeatedTorsoPitch",
-		math.deg(currentTorsoPitch)
-	)
+	player:SetAttribute("SeatedTorsoPitch", math.deg(currentTorsoPitch))
 
-	player:SetAttribute(
-		"UpperBodyConstraintAlpha",
-		0
-	)
+	player:SetAttribute("UpperBodyConstraintAlpha", 0)
 end
 
 ----------------------------------------------------------------
 -- HEAD / NECK
 ----------------------------------------------------------------
 
-local function updateHeadLook(
-	dt: number
-)
-	local camera =
-		Workspace.CurrentCamera
+local function updateHeadLook(dt: number)
+	local camera = Workspace.CurrentCamera
 
-	local currentUpperTorso =
-		upperTorso
+	local currentUpperTorso = upperTorso
 
-	local currentNeck =
-		neck
+	local currentNeck = neck
 
-	local baseNeckC0 =
-		originalNeckC0
+	local baseNeckC0 = originalNeckC0
 
-	if
-		not camera
-		or not currentUpperTorso
-		or not currentNeck
-		or not baseNeckC0
-	then
+	if not camera or not currentUpperTorso or not currentNeck or not baseNeckC0 then
 		return
 	end
 
@@ -2047,275 +1583,176 @@ local function updateHeadLook(
 	------------------------------------------------------------
 
 	if not firstPersonActive then
-		local returnAlpha =
-			expAlpha(
-				HEAD_FOLLOW_SPEED,
-				dt
-			)
+		local returnAlpha = expAlpha(HEAD_FOLLOW_SPEED, dt)
 
-		currentHeadPitch =
-			lerpNumber(
-				currentHeadPitch,
-				0,
-				returnAlpha
-			)
+		currentHeadPitch = lerpNumber(currentHeadPitch, 0, returnAlpha)
 
-		currentHeadYaw =
-			lerpNumber(
-				currentHeadYaw,
-				0,
-				returnAlpha
-			)
+		currentHeadYaw = lerpNumber(currentHeadYaw, 0, returnAlpha)
 
-		currentNeck.C0 =
-			baseNeckC0
-			* CFrame.Angles(
-				currentHeadPitch,
-				currentHeadYaw,
-				0
-			)
+		currentNeck.C0 = baseNeckC0 * CFrame.Angles(currentHeadPitch, currentHeadYaw, 0)
 
 		return
 	end
 
-	local seated =
-		isCurrentlySeated()
+	local seated = isCurrentlySeated()
 
 	-- Camera is now independent of this animated torso/head pose,
 	-- so reading the actual torso orientation here is safe.
-	local localLook =
-		currentUpperTorso.CFrame:VectorToObjectSpace(
-			camera.CFrame.LookVector
-		)
+	local localLook = currentUpperTorso.CFrame:VectorToObjectSpace(camera.CFrame.LookVector)
 
 	------------------------------------------------------------
 	-- PITCH
 	------------------------------------------------------------
 
-	local targetPitch =
-		math.asin(
-			math.clamp(
-				localLook.Y,
-				-1,
-				1
-			)
-		)
+	local targetPitch = math.asin(math.clamp(localLook.Y, -1, 1))
 
 	if seated then
-		targetPitch =
-			math.clamp(
-				targetPitch,
-				-MAX_SEATED_HEAD_DOWN_PITCH,
-				MAX_SEATED_HEAD_UP_PITCH
-			)
+		targetPitch = math.clamp(targetPitch, -MAX_SEATED_HEAD_DOWN_PITCH, MAX_SEATED_HEAD_UP_PITCH)
 	else
-		targetPitch =
-			math.clamp(
-				targetPitch,
-				-MAX_HEAD_PITCH,
-				MAX_HEAD_PITCH
-			)
+		targetPitch = math.clamp(targetPitch, -MAX_HEAD_PITCH, MAX_HEAD_PITCH)
 	end
 
 	------------------------------------------------------------
 	-- YAW
 	------------------------------------------------------------
 
-	local targetYaw =
-		math.atan2(
-			-localLook.X,
-			-localLook.Z
-		)
+	local targetYaw = math.atan2(-localLook.X, -localLook.Z)
 
 	if seated then
-		targetYaw =
-			math.clamp(
-				targetYaw,
-				-MAX_SEATED_HEAD_YAW,
-				MAX_SEATED_HEAD_YAW
-			)
+		targetYaw = math.clamp(targetYaw, -MAX_SEATED_HEAD_YAW, MAX_SEATED_HEAD_YAW)
 	else
-		targetYaw =
-			math.clamp(
-				targetYaw,
-				-MAX_HEAD_YAW,
-				MAX_HEAD_YAW
-			)
+		targetYaw = math.clamp(targetYaw, -MAX_HEAD_YAW, MAX_HEAD_YAW)
 	end
 
 	------------------------------------------------------------
 	-- SMOOTH + APPLY
 	------------------------------------------------------------
 
-	local alpha =
-		expAlpha(
-			HEAD_FOLLOW_SPEED,
-			dt
-		)
+	local alpha = expAlpha(HEAD_FOLLOW_SPEED, dt)
 
-	currentHeadPitch =
-		lerpNumber(
-			currentHeadPitch,
-			targetPitch,
-			alpha
-		)
+	currentHeadPitch = lerpNumber(currentHeadPitch, targetPitch, alpha)
 
-	currentHeadYaw =
-		lerpNumber(
-			currentHeadYaw,
-			targetYaw,
-			alpha
-		)
+	currentHeadYaw = lerpNumber(currentHeadYaw, targetYaw, alpha)
 
-	currentNeck.C0 =
-		baseNeckC0
-		* CFrame.Angles(
-			currentHeadPitch,
-			currentHeadYaw,
-			0
-		)
+	currentNeck.C0 = baseNeckC0 * CFrame.Angles(currentHeadPitch, currentHeadYaw, 0)
 end
 
 ----------------------------------------------------------------
 -- INPUT
 ----------------------------------------------------------------
 
-UserInputService.InputBegan:Connect(
-	function(
-		input: InputObject,
-		gameProcessed: boolean
-	)
-		if gameProcessed then
+UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+	if gameProcessed then
+		return
+	end
+
+	if input.KeyCode == CAMERA_MODE_KEY then
+		local nextMode = selectedThirdPersonCameraMode + 1
+
+		if nextMode > MAX_THIRD_PERSON_CAMERA_MODE then
+			nextMode = 1
+		end
+
+		setThirdPersonCameraMode(nextMode, true)
+
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.M then
+		if not firstPersonActive then
 			return
 		end
+		mouseReleased = not mouseReleased
 
-		if
-			input.KeyCode
-			== Enum.KeyCode.M
-		then
-			mouseReleased =
-				not mouseReleased
+		player:SetAttribute("MouseReleased", mouseReleased)
 
-			player:SetAttribute(
-				"MouseReleased",
-				mouseReleased
-			)
-
-			applyMouseState()
-		end
+		applyMouseState()
 	end
-)
+end)
 
 -- A seated first-person camera is Scriptable, so Roblox cannot move
 -- Camera.CFrame itself until we release it. Mouse-wheel zoom-out performs
 -- that release immediately; CameraModule then resumes its normal zoom.
-UserInputService.InputChanged:Connect(
-	function(
-		input: InputObject,
-		_gameProcessed: boolean
-	)
-		if
-			input.UserInputType
-			~= Enum.UserInputType.MouseWheel
-		then
-			return
-		end
-
-		if
-			firstPersonActive
-			and isCurrentlySeated()
-			and input.Position.Z < 0
-		then
-			waitingForSeatedZoomOut = true
-
-			setFirstPersonActive(false)
-			restoreDefaultCamera()
-		end
+UserInputService.InputChanged:Connect(function(input: InputObject, _gameProcessed: boolean)
+	if input.UserInputType ~= Enum.UserInputType.MouseWheel then
+		return
 	end
-)
+
+	if firstPersonActive and isCurrentlySeated() and input.Position.Z < 0 then
+		waitingForSeatedZoomOut = true
+
+		setFirstPersonActive(false)
+		restoreDefaultCamera()
+	end
+end)
 
 ----------------------------------------------------------------
 -- CHARACTER CONNECTIONS
 ----------------------------------------------------------------
 
 if player.Character then
-	setupCharacter(
-		player.Character
-	)
+	setupCharacter(player.Character)
 end
 
-player.CharacterAdded:Connect(
-	setupCharacter
-)
+player.CharacterAdded:Connect(setupCharacter)
 
-player.CharacterRemoving:Connect(
-	function(
-		removingCharacter: Model
-	)
-		if
-			removingCharacter
-			~= character
-		then
-			return
-		end
-
-		restorePreviousCharacter()
-
-		character = nil
-		humanoid = nil
-
-		head = nil
-		upperTorso = nil
-		lowerTorso = nil
-		rootPart = nil
-
-		neck = nil
-		originalNeckC0 = nil
-
-		originalCameraOffset = nil
-
-		currentHeadPitch = 0
-		currentHeadYaw = 0
-		currentTorsoYaw = 0
-		currentTorsoPitch = 0
-
-		seatedCameraYaw = 0
-		seatedCameraPitch = 0
-		wasSeated = false
+player.CharacterRemoving:Connect(function(removingCharacter: Model)
+	if removingCharacter ~= character then
+		return
 	end
-)
+
+	restorePreviousCharacter()
+
+	character = nil
+	humanoid = nil
+
+	head = nil
+	upperTorso = nil
+	lowerTorso = nil
+	rootPart = nil
+
+	neck = nil
+	originalNeckC0 = nil
+
+	originalCameraOffset = nil
+
+	currentHeadPitch = 0
+	currentHeadYaw = 0
+	currentTorsoYaw = 0
+	currentTorsoPitch = 0
+
+	seatedCameraYaw = 0
+	seatedCameraPitch = 0
+	wasSeated = false
+end)
 
 ----------------------------------------------------------------
 -- RENDER
 ----------------------------------------------------------------
 
-RunService:BindToRenderStep(
-	RENDER_STEP_NAME,
-	Enum.RenderPriority.Camera.Value + 1,
+RunService:BindToRenderStep(RENDER_STEP_NAME, Enum.RenderPriority.Camera.Value + 1, function(dt: number)
+	--------------------------------------------------------
+	-- ROBLOX CAMERA OWNS ZOOM
+	--------------------------------------------------------
 
-	function(dt: number)
-		--------------------------------------------------------
-		-- ROBLOX CAMERA OWNS ZOOM
-		--------------------------------------------------------
+	ensureZoomableCameraMode()
+	updateFirstPersonZoomState()
+	updateCameraOffsetForMode()
 
-		ensureZoomableCameraMode()
-		updateFirstPersonZoomState()
-		updateCameraOffsetForMode()
+	applyMouseState()
+	updateAbilityManagerTurning()
+	updateCharacterVisibility(dt)
 
-		applyMouseState()
-		updateCharacterVisibility(dt)
+	--------------------------------------------------------
+	-- CUSTOM CAMERA ONLY WHILE TRUE FIRST PERSON NEEDS IT
+	--------------------------------------------------------
 
-		--------------------------------------------------------
-		-- CUSTOM CAMERA ONLY WHILE TRUE FIRST PERSON NEEDS IT
-		--------------------------------------------------------
+	updateSeatedCamera()
 
-		updateSeatedCamera()
+	--------------------------------------------------------
+	-- SKELETON FOLLOWS CAMERA
+	--------------------------------------------------------
 
-		--------------------------------------------------------
-		-- SKELETON FOLLOWS CAMERA
-		--------------------------------------------------------
-
-		updateTorsoIK(dt)
-		updateHeadLook(dt)
-	end
-)
+	updateTorsoIK(dt)
+	updateHeadLook(dt)
+end)

@@ -45,6 +45,9 @@ local Debris = game:GetService("Debris")
 
 local player = Players.LocalPlayer
 
+local SPARK_INITIAL_LOAD_COMPLETE_ATTRIBUTE =
+	"SparkInitialLoadComplete"
+
 
 --==============================================================
 -- SETTINGS
@@ -1766,6 +1769,27 @@ end
 -- CHARACTER ADDED
 --==============================================================
 
+local function waitForInitialLoad(
+	character: Model
+): boolean
+	-- A missing attribute keeps the controller backward-compatible when the
+	-- Spark intro is disabled. ReplicatedFirst explicitly sets false while the
+	-- initial camera sequence owns presentation.
+	while
+		player:GetAttribute(
+			SPARK_INITIAL_LOAD_COMPLETE_ATTRIBUTE
+		) == false
+	do
+		if not character.Parent then
+			return false
+		end
+
+		RunService.Heartbeat:Wait()
+	end
+
+	return character.Parent ~= nil
+end
+
 local function onCharacterAdded(
 	character: Model
 )
@@ -1791,6 +1815,10 @@ local function onCharacterAdded(
 
 
 			if not character.Parent then
+				return
+			end
+
+			if not waitForInitialLoad(character) then
 				return
 			end
 

@@ -4,6 +4,34 @@
 
 This document is intended as a complete handoff to another ChatGPT conversation. It records the decisions, discoveries, bugs, fixes, current architecture, current accepted behaviour, and the important intermediate experiments from today.
 
+## Repository Integration Addendum — 2026-09-15
+
+The isolated Spark V2 source has now been copied into the main project working tree for Studio validation.
+
+- `LoadingCameraFirstIntroEffect.client.lua` is mapped into `ReplicatedFirst`.
+- `SparkVisuals.lua` and the renamed `SparkCameraModule.lua` live together beneath `ReplicatedStorage.Modules.Spark`.
+- `LoadingCameraController.client.lua` now requires that mapped Spark module path.
+- `LoadingCameraTransitionListener.server.lua` provides the `SparkCameraTransitionRemote` completion handshake.
+- the new follower source has replaced the repository working copy of `SparkFollower.client.lua` and consumes `TrueFirstPersonActive` from the existing camera controller.
+- the former `GtaCameraManager`, `GtaCam` and `GTA_` runtime terminology has been replaced with Spark camera terminology in active source.
+
+This integration is intentionally uncommitted until the ReplicatedFirst cinematic, cinematic/gameplay Spark handoff, camera return, CCL control restoration, respawn cleanup and new follower behavior have passed in-game testing. Earlier sections below retain the historical names used while the isolated prototype was being developed.
+
+## First-Person Body Visibility and Boat IK Reminder — 2026-09-15
+
+The latest Roblox runtime is currently presenting true first person as a hands-only view. This has grown on the project and should remain supported as one selectable presentation. The requested future setting is:
+
+- hands only: hide the head and accessories;
+- body view: keep the HumanoidRootPart, legs and body visible while still hiding the head and accessories.
+
+This must reuse the existing custom visibility pipeline and transition smoothly; do not replace it with Roblox's stock transparency behavior.
+
+The existing boat-seat IK system remains required across all camera modes. Steering-wheel hand IK and seated look limits retain orientation ownership while seated, even when `TrueFirstPersonActive` is true. Camera modes own camera and mouse presentation; swimming, seating, vehicles and future special states own physical character orientation through explicit state ownership. This separation keeps the state machine extensible and prevents CCL look turning from fighting seat or swim alignment.
+
+Camera HUD/input rules now follow the same ownership boundary: `Y` remains available for camera-mode cycling, while `M` is shown and accepted only in true first person. Exiting first person automatically recaptures the normal third-person camera and clears the free-mouse state.
+
+The first integrated run found a real startup race: CinematicSpark could take longer than the camera module's fixed ten-second lookup, while the loading GUI and spawn presentation advanced independently. The local integration now coordinates ReplicatedFirst, SparkFollower, SparkCameraModule and SpawnVisualController with `SparkIntroReadyForCameraTransition`, `SparkGameplayFollowerReady` and `SparkInitialLoadComplete`. The initial avatar is concealed until the server-acknowledged camera handoff completes, after which the normal spawn materialisation begins.
+
 ---
 
 # 1. Core Direction Established Today
@@ -2658,3 +2686,13 @@ The guiding architectural rule going forward is:
 Let Roblox provide useful input, sensors and controller infrastructure, but do not throw away Spark's working custom ocean physics merely to conform to Roblox's native water model.
 
 The next swimming work should be incremental validation of the hybrid CCL input + full camera LookVector controller, not another complete rewrite of the water system.
+## First-Person Body Visibility and Boat IK Reminder — 2026-09-15
+
+The latest Roblox runtime is currently presenting true first person as a hands-only view. This has grown on the project and should remain supported as one selectable presentation. The requested future setting is:
+
+- hands only: hide the head and accessories;
+- body view: keep the HumanoidRootPart, legs and body visible while still hiding the head and accessories.
+
+This must reuse the existing custom visibility pipeline and transition smoothly; do not replace it with Roblox's stock transparency behavior.
+
+The existing boat-seat IK system remains required across all camera modes. Steering-wheel hand IK and seated look limits retain orientation ownership while seated, even when `TrueFirstPersonActive` is true. Camera modes own camera and mouse presentation; swimming, seating, vehicles and future special states own physical character orientation through explicit state ownership. This separation keeps the state machine extensible and prevents CCL look turning from fighting seat or swim alignment.
