@@ -32,6 +32,49 @@ Camera HUD/input rules now follow the same ownership boundary: `Y` remains avail
 
 The first integrated run found a real startup race: CinematicSpark could take longer than the camera module's fixed ten-second lookup, while the loading GUI and spawn presentation advanced independently. The local integration now coordinates ReplicatedFirst, SparkFollower, SparkCameraModule and SpawnVisualController with `SparkIntroReadyForCameraTransition`, `SparkGameplayFollowerReady` and `SparkInitialLoadComplete`. The initial avatar is concealed until the server-acknowledged camera handoff completes, after which the normal spawn materialisation begins.
 
+## Spark Catch-up Changelog — Previously Completed Work
+
+This section records Spark changes completed during isolated-project work and Studio integration that were not entered at the time.
+
+### Spark V2 visual architecture
+
+- Spark was rebuilt from a simple fairy/orb presentation into a layered character with an engineered outer shell, inner soul body, wings, authored materials and dedicated soul VFX.
+- `SparkVisuals` became the owner of materialisation, colour states, ambient particles, soul bursts, wing emission and runtime visual restoration.
+- Spark colour states use a seeded intro palette and restore the authored gameplay appearance at handoff.
+- Runtime appearance changes preserve the authored material variant and prevent the outer shell from incorrectly becoming ForceField during ordinary materialisation.
+
+### Follower and companion behaviour
+
+- The new Spark follower replaced the earlier follower implementation and moved into the Spark module architecture.
+- Spark now uses `TrueFirstPersonActive` from the camera controller rather than the obsolete first-person marker.
+- Gameplay Spark remains hidden until cinematic handoff, then materialises through the shared visual system.
+- Smooth camera-relative following, shoulder/peripheral placement, gaze behaviour, climbing/falling correction, HUD-safe positioning and `ScaleTo(0.5)` remain accepted companion behavior.
+
+### Camera module rename and ownership
+
+- `GtaCameraManager`/`GtaCam` terminology was replaced with `SparkCameraModule` and Spark-specific runtime names.
+- The camera handoff coordinates cinematic Spark, gameplay Spark, character controls, camera ownership, audio, blur and server acknowledgement.
+- Camera presentation and mouse capture remain separate from physical orientation ownership. Seated steering IK and swimming alignment retain control when true first person is active.
+
+### Loading and ReplicatedFirst lifecycle
+
+- ReplicatedFirst loading removes Roblox's default loading screen, freezes input during startup and conceals the initial character until acknowledged handoff.
+- Loading stages report `Finding your Spark`, `Spark Found`, and `Spark is finding your Vessel, Character and you`.
+- The startup race between the loading UI, SparkFollower, ReplicatedFirst and SparkCameraModule was addressed with readiness attributes instead of fixed-duration guesses.
+- The two-panel loading reveal was restored: upper and lower panels separate and tween away to reveal Spark before the camera transition.
+- The authored Spark model remains sourced from `ReplicatedStorage.Models.NPCs.SparkModels.Spark`; a ReplicatedFirst template is optional.
+
+### First-person presentation and input rules
+
+- The current Roblox result is hands-only first person, with the head and accessories hidden through the custom visibility pipeline.
+- A future setting is recorded to choose hands-only or body-visible first person while continuing to hide the head and accessories.
+- `Y` is always the camera-mode toggle. `M` is shown and accepted only in true first person, and leaving first person clears free-mouse state.
+
+### Studio/Rojo integration notes
+
+- ReplicatedFirst is mapped as a directory container in `default.project.json` to avoid the duplicate `$className`/`$path` conflict.
+- Source copies remain versioned when Studio testing uses manually restored ReplicatedFirst scripts. Only one active intro controller should run at a time.
+
 ---
 
 # 1. Core Direction Established Today

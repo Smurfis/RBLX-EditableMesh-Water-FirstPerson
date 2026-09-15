@@ -1,28 +1,40 @@
 --!strict
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage");
-local ReplicatedFirst = game:GetService("ReplicatedFirst");
-local Players = game:GetService("Players");
-local TweenService = game:GetService("TweenService");
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
--- Nuke Roblox default UI as early as possible
-ReplicatedFirst:RemoveDefaultLoadingScreen();
+---------------------------------------------------------
+-- REMOVE DEFAULT ROBLOX LOADING SCREEN
+---------------------------------------------------------
 
-local LocalPlayer: Player = Players.LocalPlayer;
+ReplicatedFirst:RemoveDefaultLoadingScreen()
 
-local SparkCameraModule = require(
-	ReplicatedStorage
-		:WaitForChild("Modules")
-		:WaitForChild("Spark")
-		:WaitForChild("SparkCameraModule")
-);
+---------------------------------------------------------
+-- PLAYER
+---------------------------------------------------------
+
+local LocalPlayer: Player = Players.LocalPlayer
+
+---------------------------------------------------------
+-- SPARK CAMERA MODULE
+---------------------------------------------------------
+
+local Modules = ReplicatedStorage:WaitForChild("Modules") :: Folder
+
+local SparkModulesFolder = Modules:WaitForChild("Spark") :: Folder
+
+local SparkCameraModuleRoot = SparkModulesFolder:WaitForChild("SparkCameraModule") :: ModuleScript
+
+local SparkCameraModule = require(SparkCameraModuleRoot)
 
 ---------------------------------------------------------
 -- CAMERA TRANSITION CONFIG
 ---------------------------------------------------------
 
-local ASCENT_DURATION: number = 0.9;
-local DESCENT_DURATION: number = 2.1;
+local ASCENT_DURATION: number = 0.9
+local DESCENT_DURATION: number = 2.1
 
 ---------------------------------------------------------
 -- CAMERA ENGINE
@@ -38,37 +50,7 @@ local cameraEngine = SparkCameraModule.new({
 	ApexFov = 115,
 	EndFov = 70,
 	MaxBlur = 18,
-});
-
----------------------------------------------------------
--- LOADING SCREEN
----------------------------------------------------------
-
-local function hideLoadingScreen()
-	local playerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui;
-	local loadingGui = playerGui:FindFirstChild("LoadingGui") :: ScreenGui?;
-
-	if not loadingGui then
-		return;
-	end;
-
-	local mainFrame = loadingGui:FindFirstChildOfClass("Frame") :: Frame?;
-
-	if mainFrame then
-		local fade: Tween = TweenService:Create(
-			mainFrame,
-			TweenInfo.new(0.6),
-			{
-				BackgroundTransparency = 1,
-			}
-		);
-
-		fade:Play();
-		fade.Completed:Wait();
-	end;
-
-	loadingGui.Enabled = false;
-end;
+})
 
 ---------------------------------------------------------
 -- EXECUTE SEQUENCE
@@ -76,13 +58,12 @@ end;
 
 task.spawn(function()
 	local transitionStarted: boolean = cameraEngine:Execute(function()
-		print("[Client]: Spark Camera Spawn Transition Complete!");
-		task.spawn(hideLoadingScreen);
-	end);
+		print("[Client]: Spark Camera Spawn Transition Complete!")
+	end)
 
 	if not transitionStarted then
-		warn("[Client]: Spark Camera Spawn Transition failed to start.");
-		return;
-	end;
+		warn("[Client]: Spark Camera Spawn Transition failed to start.")
 
-end);
+		return
+	end
+end)

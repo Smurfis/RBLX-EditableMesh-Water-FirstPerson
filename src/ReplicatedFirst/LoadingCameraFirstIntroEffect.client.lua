@@ -17,6 +17,8 @@ local SPARK_INITIAL_LOAD_COMPLETE_ATTRIBUTE: string = "SparkInitialLoadComplete"
 
 local SPARK_INTRO_STAGE_ATTRIBUTE: string = "SparkIntroStage"
 
+local SPARK_LOADING_SCREEN_READY_ATTRIBUTE: string = "SparkLoadingScreenReady"
+
 local SPARK_INTRO_FREEZE_ACTION_NAME: string = "SparkIntro_FreezeInput"
 
 local LOADING_ORIGINAL_TRANSPARENCY_ATTRIBUTE: string = "SparkLoadingOriginalLocalTransparency"
@@ -26,6 +28,23 @@ localPlayer:SetAttribute(SPARK_INTRO_READY_ATTRIBUTE, false)
 localPlayer:SetAttribute(SPARK_INITIAL_LOAD_COMPLETE_ATTRIBUTE, false)
 
 localPlayer:SetAttribute(SPARK_INTRO_STAGE_ATTRIBUTE, "Booting")
+
+local function waitForLoadingScreenReady()
+	local deadline = time() + 30
+	while localPlayer:GetAttribute(SPARK_LOADING_SCREEN_READY_ATTRIBUTE) ~= true do
+		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+		local loadingGui = playerGui and playerGui:FindFirstChild("LoadingGui")
+		if not loadingGui or (loadingGui:IsA("ScreenGui") and not loadingGui.Enabled) then
+			localPlayer:SetAttribute(SPARK_LOADING_SCREEN_READY_ATTRIBUTE, true)
+			return
+		end
+		if time() >= deadline then
+			warn("[Spark Intro]: Loading screen ready signal was not received; continuing.")
+			return
+		end
+		task.wait(0.05)
+	end
+end
 
 ---------------------------------------------------------
 -- SPARK LOADING SCREEN
@@ -54,6 +73,24 @@ loadingBackground.BorderSizePixel = 0
 loadingBackground.ZIndex = 0
 loadingBackground.Parent = loadingGui
 loadingGroup.ZIndex = 1
+
+local loadingTopPanel: Frame = loadingGui:FindFirstChild("SparkLoadingTopPanel") :: Frame or Instance.new("Frame")
+loadingTopPanel.Name = "SparkLoadingTopPanel"
+loadingTopPanel.Size = UDim2.fromScale(1.5, 0.5)
+loadingTopPanel.Position = UDim2.fromScale(0, 0)
+loadingTopPanel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+loadingTopPanel.BorderSizePixel = 0
+loadingTopPanel.ZIndex = 2
+loadingTopPanel.Parent = loadingGui
+
+local loadingBottomPanel: Frame = loadingGui:FindFirstChild("SparkLoadingBottomPanel") :: Frame or Instance.new("Frame")
+loadingBottomPanel.Name = "SparkLoadingBottomPanel"
+loadingBottomPanel.Size = UDim2.fromScale(1.5, 0.5)
+loadingBottomPanel.Position = UDim2.fromScale(0, 0.5)
+loadingBottomPanel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+loadingBottomPanel.BorderSizePixel = 0
+loadingBottomPanel.ZIndex = 2
+loadingBottomPanel.Parent = loadingGui
 
 local loadingText: TextLabel = loadingGroup:FindFirstChild("Status") :: TextLabel or Instance.new("TextLabel")
 loadingText.Name = "Status"
@@ -110,6 +147,78 @@ local function setLoadingText(text: string)
 			RunService.RenderStepped:Wait()
 		end
 	end)
+end
+
+local loadingRevealStarted = false
+
+local function revealSparkFromLoadingScreen()
+	if loadingRevealStarted then
+		return
+	end
+
+	loadingRevealStarted = true
+
+	---------------------------------------------------------
+	-- OPEN THE LOADING PANELS
+	---------------------------------------------------------
+
+	local panelTweenInfo = TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+	local topTween = TweenService:Create(loadingTopPanel, panelTweenInfo, {
+		Position = UDim2.fromScale(0, -0.55),
+	})
+
+	local bottomTween = TweenService:Create(loadingBottomPanel, panelTweenInfo, {
+		Position = UDim2.fromScale(0, 1.05),
+	})
+
+	---------------------------------------------------------
+	-- FADE STATUS TEXT / LOADING CONTENT
+	---------------------------------------------------------
+
+	local loadingGroupFade =
+		TweenService:Create(loadingGroup, TweenInfo.new(0.30, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			GroupTransparency = 1,
+		})
+
+	topTween:Play()
+	bottomTween:Play()
+	loadingGroupFade:Play()
+
+	---------------------------------------------------------
+	-- WAIT UNTIL THE PANELS HAVE CLEARED THE SCREEN
+	---------------------------------------------------------
+
+	bottomTween.Completed:Wait()
+
+	---------------------------------------------------------
+	-- LOADING SCREEN IS NOW FINISHED
+	---------------------------------------------------------
+
+	loadingBackground.BackgroundTransparency = 1
+
+	loadingTopPanel.Visible = false
+	loadingBottomPanel.Visible = false
+
+	loadingGroup.Visible = false
+
+	---------------------------------------------------------
+	-- IMPORTANT:
+	-- The custom loading screen has now done its only job:
+	-- replacing Roblox's default loading screen.
+	--
+	-- Disable it BEFORE the actual Spark cinematic begins.
+	---------------------------------------------------------
+
+	loadingGui.Enabled = false
+
+	---------------------------------------------------------
+	-- TELL THE CINEMATIC IT MAY NOW BEGIN
+	---------------------------------------------------------
+
+	localPlayer:SetAttribute(SPARK_LOADING_SCREEN_READY_ATTRIBUTE, true)
+
+	print("[Spark Intro]: Loading screen cleared. " .. "ReplicatedFirst cinematic may begin.")
 end
 
 local function loadingTextForStage(stage: string): string
@@ -936,19 +1045,21 @@ local function waitForIntroChild(parent: Instance, childName: string, stageName:
 end
 
 local function getCinematicSparkTemplate(): Model
-	localPlayer:SetAttribute(SPARK_INTRO_STAGE_ATTRIBUTE, "WaitingForReplicatedFirst.SparkIntroTemplate")
+	local introTemplate: Instance? = ReplicatedFirst:FindFirstChild(SPARK_INTRO_TEMPLATE_NAME)
+	if introTemplate and introTemplate:IsA("Model") then
+		localPlayer:SetAttribute(SPARK_INTRO_STAGE_ATTRIBUTE, "UsingReplicatedFirst.SparkIntroTemplate")
+		return introTemplate
+	end
 
-	-- ReplicatedFirst may be populated by Studio/Rojo after this script
-	-- begins. Wait for the authored intro model instead of falling through
-	-- immediately to a gameplay-only path.
-	local introTemplate: Instance =
-		waitForIntroChild(ReplicatedFirst, SPARK_INTRO_TEMPLATE_NAME, "WaitingForReplicatedFirst.SparkIntroTemplate")
-
-	assert(introTemplate:IsA("Model"), "ReplicatedFirst.SparkIntroTemplate must be a Model")
-
-	localPlayer:SetAttribute(SPARK_INTRO_STAGE_ATTRIBUTE, "UsingReplicatedFirst.SparkIntroTemplate")
-
-	return introTemplate
+	-- Use the established hierarchy from the original working intro.
+	localPlayer:SetAttribute(SPARK_INTRO_STAGE_ATTRIBUTE, "WaitingForReplicatedStorage.Spark")
+	local models: Instance = waitForIntroChild(ReplicatedStorage, "Models", "WaitingForReplicatedStorage.Models")
+	local npcs: Instance = waitForIntroChild(models, "NPCs", "WaitingForModels.NPCs")
+	local sparkModels: Instance = waitForIntroChild(npcs, "SparkModels", "WaitingForNPCs.SparkModels")
+	local sparkTemplate: Instance =
+		waitForIntroChild(sparkModels, SPARK_GAMEPLAY_TEMPLATE_NAME, "WaitingForSparkModels.Spark")
+	assert(sparkTemplate:IsA("Model"), "ReplicatedStorage.Models.NPCs.SparkModels.Spark must be a Model")
+	return sparkTemplate
 end
 
 local function createCinematicSpark()
@@ -1867,6 +1978,7 @@ localPlayer:SetAttribute(SPARK_INTRO_STAGE_ATTRIBUTE, "LoadingCameraLocked")
 ---------------------------------------------------------
 
 createCinematicSpark()
+task.spawn(revealSparkFromLoadingScreen)
 
 RunService:BindToRenderStep(LOADING_SPARK_BIND_NAME, Enum.RenderPriority.Camera.Value + 101, updateLoadingSpark)
 
@@ -1887,6 +1999,7 @@ end)
 ---------------------------------------------------------
 
 task.spawn(function()
+	waitForLoadingScreenReady()
 	localPlayer:SetAttribute(SPARK_INTRO_STAGE_ATTRIBUTE, "PlayingInitialSparkCinematic")
 
 	playInitialSparkCinematic()

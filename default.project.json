@@ -6,7 +6,6 @@
     "$ignoreUnknownInstances": true,
 
     "ReplicatedFirst": {
-      "$className": "ReplicatedFirst",
       "$path": "src/ReplicatedFirst",
       "$ignoreUnknownInstances": true
     },
