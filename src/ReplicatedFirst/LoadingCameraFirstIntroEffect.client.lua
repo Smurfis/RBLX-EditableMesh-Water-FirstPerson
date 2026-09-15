@@ -936,32 +936,19 @@ local function waitForIntroChild(parent: Instance, childName: string, stageName:
 end
 
 local function getCinematicSparkTemplate(): Model
-	local introTemplate: Instance? = ReplicatedFirst:FindFirstChild(SPARK_INTRO_TEMPLATE_NAME)
+	localPlayer:SetAttribute(SPARK_INTRO_STAGE_ATTRIBUTE, "WaitingForReplicatedFirst.SparkIntroTemplate")
 
-	if introTemplate then
-		assert(introTemplate:IsA("Model"), "ReplicatedFirst.SparkIntroTemplate must be a Model")
+	-- ReplicatedFirst may be populated by Studio/Rojo after this script
+	-- begins. Wait for the authored intro model instead of falling through
+	-- immediately to a gameplay-only path.
+	local introTemplate: Instance =
+		waitForIntroChild(ReplicatedFirst, SPARK_INTRO_TEMPLATE_NAME, "WaitingForReplicatedFirst.SparkIntroTemplate")
 
-		localPlayer:SetAttribute(SPARK_INTRO_STAGE_ATTRIBUTE, "UsingReplicatedFirst.SparkIntroTemplate")
+	assert(introTemplate:IsA("Model"), "ReplicatedFirst.SparkIntroTemplate must be a Model")
 
-		return introTemplate
-	end
+	localPlayer:SetAttribute(SPARK_INTRO_STAGE_ATTRIBUTE, "UsingReplicatedFirst.SparkIntroTemplate")
 
-	warn(
-		"[Spark Intro]: ReplicatedFirst.SparkIntroTemplate was not found; waiting for the ReplicatedStorage gameplay template fallback."
-	)
-
-	local models: Instance = waitForIntroChild(ReplicatedStorage, "Models", "WaitingForReplicatedStorage.Models")
-
-	local npcs: Instance = waitForIntroChild(models, "NPCs", "WaitingForModels.NPCs")
-
-	local sparkModels: Instance = waitForIntroChild(npcs, "SparkModels", "WaitingForNPCs.SparkModels")
-
-	local sparkTemplate: Instance =
-		waitForIntroChild(sparkModels, SPARK_GAMEPLAY_TEMPLATE_NAME, "WaitingForSparkModels.Spark")
-
-	assert(sparkTemplate:IsA("Model"), "ReplicatedStorage.Models.NPCs.SparkModels.Spark must be a Model")
-
-	return sparkTemplate
+	return introTemplate
 end
 
 local function createCinematicSpark()
