@@ -93,6 +93,39 @@ The snapshot/restore handoff is equally important. CharacterAbilities may add or
 - Restore captured CCL settings and controller ownership when custom swimming ends.
 - Preserve the graduated surface exit, horizontal surface behavior, full 3D underwater movement and explicit world-up/world-down controls.
 
+### Central Boat and Helm Controller
+
+Boat steering is now sourced from the repository rather than requiring a separate steering script inside each Studio boat model.
+
+`ServerScriptService.BoatController` manages boat models using this hierarchy:
+
+```text
+Workspace
+└─ Boats
+   └─ <Boat Model>
+      ├─ BoatSeat (VehicleSeat)
+      └─ <Helm Model or Folder>
+         └─ Handle (BasePart)
+            ├─ HingeConstraint
+            ├─ LeftAttachment
+            └─ RightAttachment
+```
+
+Each boat must be a direct child Model of `Workspace.Boats`. `BoatSeat`, the helm model and `Handle` may be nested within that boat. The controller discovers `BoatSeat` and `Handle` recursively, then maps `BoatSeat.SteerFloat` to the helm hinge's `TargetAngle`.
+
+The default maximum helm angle is 45 degrees. A numeric `HelmMaxAngle` attribute on `BoatSeat`, or on the boat model as a fallback, can override it per boat without duplicating scripts.
+
+The controller binds every existing boat and listens for boats added or removed at runtime. It also refreshes a boat binding when relevant descendants are added or removed, allowing Studio/streamed hierarchies to finish assembling after the boat model appears. There is no per-frame Workspace scan.
+
+`HandsInitializer` now follows the same hierarchy contract. It only enables steering-hand IK when the occupied seat:
+
+- is a `VehicleSeat` named `BoatSeat`;
+- belongs to a top-level boat Model under `Workspace.Boats`;
+- can resolve a descendant BasePart named `Handle`;
+- has valid `LeftAttachment` and `RightAttachment` targets beneath that handle.
+
+Ordinary seats no longer qualify merely because their immediate parent contains something named `Handle`. Leaving the boat, entering a non-boat seat or encountering an incomplete helm clears both IK targets cleanly.
+
 ### Spark Intro Iteration — Isolated Place, Pending Import
 
 A new Spark/Fairy intro iteration was created on 14 September 2026 in a separate Roblox place used for isolated development. It has not yet been imported into this repository or its current Rojo project, so it is recorded here as completed external prototype work pending integration rather than current project behavior.

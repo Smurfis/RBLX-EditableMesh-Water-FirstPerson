@@ -1,6 +1,56 @@
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 
 local HAND_IK_PRIORITY = 10
+
+
+local function getBoatForSeat(
+	seatPart: BasePart
+): Model?
+	if
+		seatPart.Name ~= "BoatSeat"
+		or not seatPart:IsA("VehicleSeat")
+	then
+		return nil
+	end
+
+	local boatsFolder =
+		Workspace:FindFirstChild("Boats")
+
+	if not boatsFolder then
+		return nil
+	end
+
+	local candidate: Instance? =
+		seatPart
+
+	while
+		candidate
+		and candidate.Parent ~= boatsFolder
+	do
+		candidate = candidate.Parent
+	end
+
+	if
+		candidate
+		and candidate:IsA("Model")
+	then
+		return candidate
+	end
+
+	return nil
+end
+
+
+local function clearHandTargets(
+	ikLeft: IKControl,
+	ikRight: IKControl
+)
+	ikLeft.Enabled = false
+	ikRight.Enabled = false
+	ikLeft.Target = nil
+	ikRight.Target = nil
+end
 
 
 local function CharacterAdded(character)
@@ -120,17 +170,10 @@ local function CharacterAdded(character)
 			----------------------------------------------------
 
 			if not active then
-				ikLeft.Enabled =
-					false
-
-				ikRight.Enabled =
-					false
-
-				ikLeft.Target =
-					nil
-
-				ikRight.Target =
-					nil
+				clearHandTargets(
+					ikLeft,
+					ikRight
+				)
 
 				return
 			end
@@ -144,10 +187,15 @@ local function CharacterAdded(character)
 				return
 			end
 
-			local seatModel =
-				seatPart.Parent
+			local boat =
+				getBoatForSeat(seatPart)
 
-			if not seatModel then
+			if not boat then
+				clearHandTargets(
+					ikLeft,
+					ikRight
+				)
+
 				return
 			end
 
@@ -157,9 +205,27 @@ local function CharacterAdded(character)
 			----------------------------------------------------
 
 			local handle =
-				seatModel:FindFirstChild("Handle")
+				boat:FindFirstChild(
+					"Handle",
+					true
+				)
 
-			if not handle then
+			if
+				not handle
+				or not handle:IsA("BasePart")
+			then
+				warn(
+					string.format(
+						"[HandsInitializer] %s requires a BasePart named Handle beneath the boat model",
+						boat:GetFullName()
+					)
+				)
+
+				clearHandTargets(
+					ikLeft,
+					ikRight
+				)
+
 				return
 			end
 
@@ -185,7 +251,15 @@ local function CharacterAdded(character)
 				or not rightAttachment:IsA("Attachment")
 			then
 				warn(
-					"Steering wheel Handle is missing valid hand attachments"
+					string.format(
+						"[HandsInitializer] %s.Handle is missing LeftAttachment or RightAttachment",
+						boat:GetFullName()
+					)
+				)
+
+				clearHandTargets(
+					ikLeft,
+					ikRight
 				)
 
 				return
