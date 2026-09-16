@@ -1,3 +1,53 @@
+## v0.6.2-0-dev - 2026-09-15 - Boats | TIMESTAMP 21:08
+
+## BOATS
+
+Implemented physical boat flotation and propulsion using the existing dynamic water system.
+
+### Added
+
+* Six-point boat water sampling using `BoatRoot`.
+* Physical buoyancy driven by existing `WaterConfig` / `WaterWaveSampler`.
+* Server-validated dynamic boat activation and network ownership.
+* Physical forward/reverse propulsion from `BoatSeat`.
+* Physical yaw steering while preserving buoyancy-controlled pitch/roll.
+* Coasting drag, lateral resistance and speed-dependent turning.
+* Studio diagnostics for infinite assembly mass, anchored connected parts and separate assemblies.
+
+### Preserved
+
+* Steering-wheel hand IK.
+* Existing helm/input behaviour.
+* Seated character pose.
+* Head/shoulder look.
+* Swimming.
+* Camera systems.
+* Water renderer and Gerstner wave maths.
+
+### Fixes
+
+* Added required `WaterDynamicPhysics = true` Boolean attribute to the boat model.
+* Fixed the boat remaining anchored and reporting `AssemblyMass = inf`.
+* Re-welded structural boat parts that were previously only being held together by anchoring.
+* Reattached `MastFloor`, seat/helm structure and other disconnected hull components.
+* Corrected helm structure so the frame is rigidly attached to the boat while the steering wheel remains free to rotate.
+* Prevented reliance on `PivotTo`, direct CFrame movement or duplicate movement controllers.
+* Suspended custom swimming forces, orientation and input while a character is seated so the vehicle owns mounted movement cleanly; normal water detection resumes after exit.
+* Added hysteresis to Spark's first-person catch-up facing so Spark can turn toward its return path without rapidly flipping near the direction threshold.
+
+### Result
+
+The small boat now:
+
+* floats physically on the dynamic ocean,
+* responds to waves,
+* can be mounted,
+* preserves steering-wheel IK,
+* drives forward/reverse,
+* steers physically,
+* and remains one coherent vessel assembly.
+
+
 ## v0.6.1-0-dev - 2026-09-15 - Spark Addition and Bug fix
 
 v0.6.0-dev — 2026-09-15 — CharacterAbilities/CCL Swimming Ownership and Omnidirectional Water Input
@@ -61,6 +111,69 @@ The current Roblox first-person result is recorded as an intentional presentatio
 Boat seating must preserve the steering-wheel hand IK and seated look limits in every camera mode, including true first person. True first person may request camera and look-input ownership, but seated steering/body IK remains the physical orientation owner. Swimming likewise retains orientation ownership through its swim alignment rather than competing with CCL turning.
 
 Future camera work must keep these responsibilities separate: camera mode controls presentation and mouse capture; the active vehicle, seated IK, swimming or special-state controller owns physical character orientation. Add the body-visibility choice as a setting without replacing the project's custom transparency treatment.
+
+### Canonical Ocean Surface Query — 2026-09-15
+
+Added `OceanSurface.Sample(worldPosition, time?, octaveCount?)` as the shared
+definition of the animated ocean surface. It combines `WaterConfig`'s base
+height with the deterministic `WaterWaveSampler` and returns surface position,
+height, displacement and normal. Swimming, boats and tagged floating objects
+now query the same surface while keeping their own behaviour offsets (swim
+bands, hull waterline/draft and buoyancy strength) separate. This keeps state
+machines and future abilities extensible: one ocean surface can serve many
+consumers without duplicating sea-level logic or drifting out of phase.
+
+### SmallBoat dynamic flotation milestone — 2026-09-15
+
+- Integrated optional physical flotation into the existing WaterInteractionController
+  Boat profile. Both parked and dynamic modes sample six points using BoatRoot's
+  size, position and frame; model extents no longer define the boat footprint.
+- Restored the rigid-water calculation to WaterConfig + WaterWaveSampler with
+  the averaged hull height, WaterBuoyancyStrength and WaterVerticalOffset.
+  This supersedes the earlier OceanSurface migration for rigid interactables.
+- Replaced immediate seat-triggered unanchoring with client preparation, a
+  server-validated readiness session, and driver network ownership. Added
+  central gravity-cancelling spring lift and hull-up alignment with free yaw.
+- Removed the independent four-point boat controller from runtime (archived its
+  source); an empty compatibility script prevents old Studio copies from running.
+- Added safe parked recovery on exit, ownership loss, missing client updates or
+  catastrophic falling. Physical mode never runs the kinematic PivotTo path.
+- Kept helm input/hinge logic and character presentation code intact. Swimming,
+  camera, water renderer and shared wave maths were not edited in this pass.
+- Automated lifecycle/sampling/force checks pass. Live flotation, helm/IK and
+  swimming-transition checks remain pending; thrust and steering torque are
+  intentionally deferred until flotation passes. See docs/SmallBoatDynamicWater.md.
+
+### SmallBoat physical propulsion — 2026-09-15
+
+- User confirmed physical flotation, mounting and helm/hand IK passed in Studio.
+- Added a force-only BoatPropulsion helper to the existing dynamic lifecycle:
+  BoatSeat throttle drives horizontal hull-relative thrust, and BoatSeat steering
+  requests yaw torque around the existing buoyancy-up axis.
+- Added smooth input response, weaker reverse, speed-dependent steering,
+  coasting drag, lateral resistance and bounded acceleration. Reused BoatConfig
+  movement settings and exposed additional response/rudder tuning as attributes.
+- Helpers run only for the validated dynamic driver and are cleaned up on exit
+  or failure. No additional movement loop, positional motion, water sampling,
+  camera, character, helm/IK or ownership rewrite was introduced.
+- Automated propulsion and existing dynamic lifecycle tests pass. Real driving
+  feel and continued flotation/IK during motion await the next Studio test.
+
+### Dynamic boat runtime anchoring — 2026-09-15
+
+- Studio reported BoatRoot and connected BoatRail/thwarts/ControllerSeat still
+  anchored, producing infinite assembly mass. Input and helm/IK remained working.
+- Hardened the server activation transaction: visit all live boat BaseParts,
+  defer ownership validation until an assembly update, verify finite mass and
+  unanchored connections, and keep later boat-owned structure unanchored while
+  the validated dynamic session remains active. Preserve saved anchors on exit.
+- Added explicit activation-gate and before/after-unanchor logs naming the live
+  Workspace boat and root. The actual failing live gate still needs these logs;
+  automated/template tests are not evidence of live activation.
+- Added a Studio-only BoatRuntimeDebug helper for Server/Client inspection and
+  an explicitly invoked impulse test. It reports infinite mass, unexpected
+  assembly roots and anchored connected/descendant parts.
+- Propulsion, buoyancy/sampling, helm/IK, characters and cameras were untouched.
 
 Camera Keybind Rules
 

@@ -8,23 +8,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GuiService = game:GetService("GuiService")
 
 local SparkVisuals =
-	require(
-		ReplicatedStorage
-		:WaitForChild("Modules")
-		:WaitForChild("Spark")
-		:WaitForChild("SparkVisuals")
-	)
+	require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Spark"):WaitForChild("SparkVisuals"))
 
 local player = Players.LocalPlayer
 local character = script.Parent
 
-local SPARK_GAMEPLAY_READY_ATTRIBUTE =
-	"SparkGameplayFollowerReady"
+local SPARK_GAMEPLAY_READY_ATTRIBUTE = "SparkGameplayFollowerReady"
 
-player:SetAttribute(
-	SPARK_GAMEPLAY_READY_ATTRIBUTE,
-	false
-)
+player:SetAttribute(SPARK_GAMEPLAY_READY_ATTRIBUTE, false)
 
 local head = character:WaitForChild("Head") :: BasePart
 local rootPart = character:WaitForChild("HumanoidRootPart") :: BasePart
@@ -37,7 +28,6 @@ local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 ----------------------------------------------------------------
 -- SPARK CAMERA TYPE SETTINGS
 ----------------------------------------------------------------
-
 
 -- Zoomed-out Spark home.
 -- First-person positioning below is intentionally left untouched.
@@ -193,9 +183,9 @@ local CLIMB_EXIT_RESPONSE_ALPHA = 0.25
 -- First-person position relative to the camera.
 -- -Z = in front of the camera.
 local FIRST_PERSON_OFFSET = Vector3.new(
-	6,  -- preferred horizontal distance; clamped to the visible screen edge
-	1.8,  -- slightly above eye level
-	-4   -- in front
+	6, -- preferred horizontal distance; clamped to the visible screen edge
+	1.8, -- slightly above eye level
+	-4 -- in front
 )
 
 -- Keep Spark's CENTER comfortably inside either edge of the viewport.
@@ -307,20 +297,25 @@ local TARGET_HOVER_HEIGHT = 1
 
 local FIRST_PERSON_ATTRIBUTE = "TrueFirstPersonActive"
 
-local isFirstPerson =
-	player:GetAttribute(FIRST_PERSON_ATTRIBUTE) == true
+local isFirstPerson = player:GetAttribute(FIRST_PERSON_ATTRIBUTE) == true
 local lastCameraModeChangeTime = os.clock()
 
 local zoomedOutShoulderMode = false
 local closeShoulderMode = false
 local lastShoulderHomeModeChangeTime = os.clock()
 
-local firstPersonConnection =
-	player:GetAttributeChangedSignal(FIRST_PERSON_ATTRIBUTE):Connect(function()
-		isFirstPerson =
-			player:GetAttribute(FIRST_PERSON_ATTRIBUTE) == true
-		lastCameraModeChangeTime = os.clock()
-	end)
+local firstPersonConnection = player:GetAttributeChangedSignal(FIRST_PERSON_ATTRIBUTE):Connect(function()
+	isFirstPerson = player:GetAttribute(FIRST_PERSON_ATTRIBUTE) == true
+	lastCameraModeChangeTime = os.clock()
+end)
+
+local FirstPersonReturnFacing = {
+	Flipped = false,
+	MinimumMovementSpeed = 1.5,
+	MinimumCatchupDistance = 0.85,
+	EnterDot = -0.15,
+	ExitDot = 0.05,
+}
 
 ----------------------------------------------------------------
 -- CHARACTER LOCOMOTION STATE
@@ -328,10 +323,7 @@ local firstPersonConnection =
 
 local HUMANOID_STATE_ATTRIBUTE = "ccl_humanoidstate"
 
-local currentCharacterControllerState =
-	humanoid:GetAttribute(
-		HUMANOID_STATE_ATTRIBUTE
-	)
+local currentCharacterControllerState = humanoid:GetAttribute(HUMANOID_STATE_ATTRIBUTE)
 
 local lastClimbStateChangeTime = os.clock()
 local climbStateChanged = false
@@ -349,9 +341,7 @@ local currentCharacterWorldSpeed = 0
 local currentCharacterVerticalSpeed = 0
 local currentCharacterVerticalVelocityY = 0
 
-local function controllerStateLooksLikeClimbing(
-	stateValue: any
-): boolean
+local function controllerStateLooksLikeClimbing(stateValue: any): boolean
 	if typeof(stateValue) ~= "string" then
 		return false
 	end
@@ -359,67 +349,40 @@ local function controllerStateLooksLikeClimbing(
 	-- The current beta controller has exposed values such as "Climbing", but
 	-- use a case-insensitive contains check while the debug listener is enabled
 	-- so small naming changes do not silently break Spark's behavior.
-	return string.find(
-		string.lower(stateValue),
-		"climb",
-		1,
-		true
-	) ~= nil
+	return string.find(string.lower(stateValue), "climb", 1, true) ~= nil
 end
 
 local function isCharacterClimbing(): boolean
-	local humanoidState =
-		humanoid:GetState()
+	local humanoidState = humanoid:GetState()
 
-	return controllerStateLooksLikeClimbing(
-		currentCharacterControllerState
-	)
-		or humanoidState
-		== Enum.HumanoidStateType.Climbing
+	return controllerStateLooksLikeClimbing(currentCharacterControllerState)
+		or humanoidState == Enum.HumanoidStateType.Climbing
 end
 
-local function updateCharacterWorldMotion(
-	dt: number
-)
-	local currentPosition =
-		rootPart.Position
+local function updateCharacterWorldMotion(dt: number)
+	local currentPosition = rootPart.Position
 
-	local previousPosition =
-		previousCharacterWorldPosition
+	local previousPosition = previousCharacterWorldPosition
 
-	previousCharacterWorldPosition =
-		currentPosition
+	previousCharacterWorldPosition = currentPosition
 
-	if previousPosition == nil
-		or dt <= 0
-	then
+	if previousPosition == nil or dt <= 0 then
 		currentCharacterWorldSpeed = 0
 		currentCharacterVerticalSpeed = 0
 		currentCharacterVerticalVelocityY = 0
 		return
 	end
 
-	local worldDelta =
-		currentPosition
-	- previousPosition
+	local worldDelta = currentPosition - previousPosition
 
-	currentCharacterWorldSpeed =
-		worldDelta.Magnitude
-		/ dt
+	currentCharacterWorldSpeed = worldDelta.Magnitude / dt
 
-	currentCharacterVerticalVelocityY =
-		worldDelta.Y
-		/ dt
+	currentCharacterVerticalVelocityY = worldDelta.Y / dt
 
-	currentCharacterVerticalSpeed =
-		math.abs(
-			currentCharacterVerticalVelocityY
-		)
+	currentCharacterVerticalSpeed = math.abs(currentCharacterVerticalVelocityY)
 end
 
-local function debugCharacterControllerState(
-	reason: string
-)
+local function debugCharacterControllerState(reason: string)
 	if not DEBUG_CHARACTER_CONTROLLER_STATE then
 		return
 	end
@@ -436,28 +399,14 @@ local function debugCharacterControllerState(
 	)
 end
 
-local humanoidStateConnection =
-	humanoid:GetAttributeChangedSignal(
-		HUMANOID_STATE_ATTRIBUTE
-	):Connect(function()
-	local wasClimbing =
-		controllerStateLooksLikeClimbing(
-			currentCharacterControllerState
-		)
+local humanoidStateConnection = humanoid:GetAttributeChangedSignal(HUMANOID_STATE_ATTRIBUTE):Connect(function()
+	local wasClimbing = controllerStateLooksLikeClimbing(currentCharacterControllerState)
 
-	currentCharacterControllerState =
-		humanoid:GetAttribute(
-			HUMANOID_STATE_ATTRIBUTE
-		)
+	currentCharacterControllerState = humanoid:GetAttribute(HUMANOID_STATE_ATTRIBUTE)
 
-	local isNowClimbing =
-		controllerStateLooksLikeClimbing(
-			currentCharacterControllerState
-		)
+	local isNowClimbing = controllerStateLooksLikeClimbing(currentCharacterControllerState)
 
-	debugCharacterControllerState(
-		"attribute changed"
-	)
+	debugCharacterControllerState("attribute changed")
 
 	if wasClimbing ~= isNowClimbing then
 		lastClimbStateChangeTime = os.clock()
@@ -471,31 +420,29 @@ end)
 local humanoidAttributeDebugConnection: RBXScriptConnection? = nil
 
 if DEBUG_CHARACTER_CONTROLLER_STATE then
-	humanoidAttributeDebugConnection =
-		humanoid.AttributeChanged:Connect(function(attributeName: string)
-			if attributeName == HUMANOID_STATE_ATTRIBUTE then
-				return
-			end
+	humanoidAttributeDebugConnection = humanoid.AttributeChanged:Connect(function(attributeName: string)
+		if attributeName == HUMANOID_STATE_ATTRIBUTE then
+			return
+		end
 
-			local lowerName = string.lower(attributeName)
+		local lowerName = string.lower(attributeName)
 
-			if string.find(lowerName, "ccl", 1, true)
-				or string.find(lowerName, "state", 1, true)
-				or string.find(lowerName, "controller", 1, true)
-			then
-				print(
-					"[SparkFollower][HumanoidAttributeDebug]",
-					attributeName,
-					"=",
-					tostring(humanoid:GetAttribute(attributeName))
-				)
-			end
-		end)
+		if
+			string.find(lowerName, "ccl", 1, true)
+			or string.find(lowerName, "state", 1, true)
+			or string.find(lowerName, "controller", 1, true)
+		then
+			print(
+				"[SparkFollower][HumanoidAttributeDebug]",
+				attributeName,
+				"=",
+				tostring(humanoid:GetAttribute(attributeName))
+			)
+		end
+	end)
 
 	task.defer(function()
-		debugCharacterControllerState(
-			"initial"
-		)
+		debugCharacterControllerState("initial")
 	end)
 end
 
@@ -544,22 +491,14 @@ end
 -- GET SPARK
 ----------------------------------------------------------------
 
-local sparkModels =
-	ReplicatedStorage
-	:WaitForChild("Models")
-	:WaitForChild("NPCs")
-	:WaitForChild("SparkModels")
+local sparkModels = ReplicatedStorage:WaitForChild("Models"):WaitForChild("NPCs"):WaitForChild("SparkModels")
 
-local sparkTemplate =
-	sparkModels:WaitForChild("Spark")
+local sparkTemplate = sparkModels:WaitForChild("Spark")
 
-assert(
-	sparkTemplate:IsA("Model"),
-	"ReplicatedStorage.Models.NPCs.SparkModels.Spark must be a Model"
-)
+assert(sparkTemplate:IsA("Model"), "ReplicatedStorage.Models.NPCs.SparkModels.Spark must be a Model")
 
 local spark = sparkTemplate:Clone()
-spark.Name = player.Name .."'s Spark"
+spark.Name = player.Name .. "'s Spark"
 spark:ScaleTo(0.5)
 spark.Parent = workspace
 
@@ -571,43 +510,31 @@ local SPARK_CAMERA_HANDOFF_EVENT_NAME = "SparkCameraHandoff"
 
 local sparkGameplayVisible = false
 
-local sparkEffectEnabledStates: {[Instance]: boolean} = {}
+local sparkEffectEnabledStates: { [Instance]: boolean } = {}
 
 for _, object in spark:GetDescendants() do
 	if object:IsA("BasePart") then
 		object.LocalTransparencyModifier = 1
-	elseif object:IsA("Light")
-		or object:IsA("ParticleEmitter")
-		or object:IsA("Beam")
-		or object:IsA("Trail")
-	then
+	elseif object:IsA("Light") or object:IsA("ParticleEmitter") or object:IsA("Beam") or object:IsA("Trail") then
 		sparkEffectEnabledStates[object] = object.Enabled
 		object.Enabled = false
 	end
 end
 
-local existingSparkCameraHandoffEvent =
-	ReplicatedStorage:FindFirstChild(
-		SPARK_CAMERA_HANDOFF_EVENT_NAME
-	)
+local existingSparkCameraHandoffEvent = ReplicatedStorage:FindFirstChild(SPARK_CAMERA_HANDOFF_EVENT_NAME)
 
 local sparkCameraHandoffEvent: BindableEvent
 
-if existingSparkCameraHandoffEvent
-	and existingSparkCameraHandoffEvent:IsA("BindableEvent")
-then
-	sparkCameraHandoffEvent =
-		existingSparkCameraHandoffEvent
+if existingSparkCameraHandoffEvent and existingSparkCameraHandoffEvent:IsA("BindableEvent") then
+	sparkCameraHandoffEvent = existingSparkCameraHandoffEvent
 else
 	if existingSparkCameraHandoffEvent then
 		existingSparkCameraHandoffEvent:Destroy()
 	end
 
 	sparkCameraHandoffEvent = Instance.new("BindableEvent")
-	sparkCameraHandoffEvent.Name =
-		SPARK_CAMERA_HANDOFF_EVENT_NAME
-	sparkCameraHandoffEvent.Parent =
-		ReplicatedStorage
+	sparkCameraHandoffEvent.Name = SPARK_CAMERA_HANDOFF_EVENT_NAME
+	sparkCameraHandoffEvent.Parent = ReplicatedStorage
 end
 
 ----------------------------------------------------------------
@@ -639,11 +566,9 @@ local function findSlimeAncestor(instance: Instance?): Model?
 	return nil
 end
 
-
 ----------------------------------------------------------------
 -- HELPER FUNCTIONS
 ----------------------------------------------------------------
-
 
 local function getLookedAtSlime(): Model?
 	local camera = workspace.CurrentCamera
@@ -654,16 +579,9 @@ local function getLookedAtSlime(): Model?
 
 	local viewportSize = camera.ViewportSize
 
-	local ray = camera:ViewportPointToRay(
-		viewportSize.X * 0.5,
-		viewportSize.Y * 0.5
-	)
+	local ray = camera:ViewportPointToRay(viewportSize.X * 0.5, viewportSize.Y * 0.5)
 
-	local result = workspace:Raycast(
-		ray.Origin,
-		ray.Direction * LOOK_DISTANCE,
-		raycastParams
-	)
+	local result = workspace:Raycast(ray.Origin, ray.Direction * LOOK_DISTANCE, raycastParams)
 
 	if not result then
 		return nil
@@ -697,13 +615,7 @@ local function getFocusedTargetCFrame(): CFrame?
 
 	local pivot, size = focusedModel:GetBoundingBox()
 
-	local position =
-		pivot.Position
-		+ Vector3.new(
-			0,
-			size.Y * 0.5 + TARGET_HOVER_HEIGHT,
-			0
-		)
+	local position = pivot.Position + Vector3.new(0, size.Y * 0.5 + TARGET_HOVER_HEIGHT, 0)
 
 	return CFrame.new(position)
 end
@@ -714,10 +626,7 @@ end
 
 local body = spark:FindFirstChild("SparkBody", true)
 
-assert(
-	body and body:IsA("BasePart"),
-	"Spark requires a BasePart named SparkBody"
-)
+assert(body and body:IsA("BasePart"), "Spark requires a BasePart named SparkBody")
 
 -- Body carries the imported Motor6D rig.
 for _, object in spark:GetDescendants() do
@@ -749,26 +658,19 @@ body.CanCollide = false
 -- Spark may collide with the world in true first person, but never with
 -- the player's own character. NoCollisionConstraint is local and does not
 -- disturb the character's existing collision groups.
-local firstPersonCharacterNoCollisionFolder =
-	Instance.new("Folder")
+local firstPersonCharacterNoCollisionFolder = Instance.new("Folder")
 
-firstPersonCharacterNoCollisionFolder.Name =
-	"FirstPersonCharacterNoCollision"
+firstPersonCharacterNoCollisionFolder.Name = "FirstPersonCharacterNoCollision"
 
-firstPersonCharacterNoCollisionFolder.Parent =
-	spark
+firstPersonCharacterNoCollisionFolder.Parent = spark
 
 for _, characterObject in character:GetDescendants() do
 	if characterObject:IsA("BasePart") then
-		local noCollisionConstraint =
-			Instance.new(
-				"NoCollisionConstraint"
-			)
+		local noCollisionConstraint = Instance.new("NoCollisionConstraint")
 
 		noCollisionConstraint.Part0 = body
 		noCollisionConstraint.Part1 = characterObject
-		noCollisionConstraint.Parent =
-			firstPersonCharacterNoCollisionFolder
+		noCollisionConstraint.Parent = firstPersonCharacterNoCollisionFolder
 	end
 end
 
@@ -784,24 +686,18 @@ end
 -- dissolve / reform language
 ----------------------------------------------------------------
 
-local sparkVisuals =
-	SparkVisuals.new(
-		spark
-	)
+local sparkVisuals = SparkVisuals.new(spark)
 
 -- Gameplay Spark is hidden until the cinematic handoff.
 -- SparkVisuals creates the canonical ambient soul emitter immediately,
 -- so explicitly keep it off until that handoff occurs.
-sparkVisuals:SetAmbientEnabled(
-	false
-)
+sparkVisuals:SetAmbientEnabled(false)
 
 ----------------------------------------------------------------
 -- ANIMATION CONTROLLER
 ----------------------------------------------------------------
 
-local animationController =
-	spark:FindFirstChildOfClass("AnimationController")
+local animationController = spark:FindFirstChildOfClass("AnimationController")
 
 if not animationController then
 	animationController = Instance.new("AnimationController")
@@ -809,8 +705,7 @@ if not animationController then
 	animationController.Parent = spark
 end
 
-local animator =
-	animationController:FindFirstChildOfClass("Animator")
+local animator = animationController:FindFirstChildOfClass("Animator")
 
 if not animator then
 	animator = Instance.new("Animator")
@@ -833,68 +728,47 @@ local currentAnimationSpeed = 1
 -- CINEMATIC HANDOFF -> RUNTIME VISUALS
 ----------------------------------------------------------------
 
-local sparkCameraHandoffConnection =
-	sparkCameraHandoffEvent.Event:Connect(function()
-		sparkGameplayVisible = true
+local sparkCameraHandoffConnection = sparkCameraHandoffEvent.Event:Connect(function()
+	sparkGameplayVisible = true
 
-		-- Restore only the effects that existed on the original Spark model
-		-- before SparkVisuals was constructed.
-		for _, object in spark:GetDescendants() do
-			if object:IsA("BasePart") then
-				object.LocalTransparencyModifier = 0
-			elseif object:IsA("Light")
-				or object:IsA("ParticleEmitter")
-				or object:IsA("Beam")
-			then
-				local wasEnabled =
-				sparkEffectEnabledStates[object]
+	-- Restore only the effects that existed on the original Spark model
+	-- before SparkVisuals was constructed.
+	for _, object in spark:GetDescendants() do
+		if object:IsA("BasePart") then
+			object.LocalTransparencyModifier = 0
+		elseif object:IsA("Light") or object:IsA("ParticleEmitter") or object:IsA("Beam") then
+			local wasEnabled = sparkEffectEnabledStates[object]
 
-				if wasEnabled ~= nil then
-					object.Enabled =
-					wasEnabled
-				end
+			if wasEnabled ~= nil then
+				object.Enabled = wasEnabled
 			end
 		end
+	end
 
-		-- SparkVisuals owns this canonical emitter; it was created after
-		-- the hidden-effect snapshot above.
-		sparkVisuals:SetAmbientEnabled(
-			true
-		)
-	end)
+	-- SparkVisuals owns this canonical emitter; it was created after
+	-- the hidden-effect snapshot above.
+	sparkVisuals:SetAmbientEnabled(true)
+end)
 
 -- The camera transition may now safely fire SparkCameraHandoff: the gameplay
 -- clone, canonical visuals and handoff listener all exist.
-player:SetAttribute(
-	SPARK_GAMEPLAY_READY_ATTRIBUTE,
-	true
-)
+player:SetAttribute(SPARK_GAMEPLAY_READY_ATTRIBUTE, true)
 
 ----------------------------------------------------------------
 -- SHOULDER HOME / PLACEMENT RESOLVER
 ----------------------------------------------------------------
 
-local shoulderAnchorPart =
-	character:FindFirstChild("UpperTorso")
-	or character:FindFirstChild("Torso")
-	or rootPart
+local shoulderAnchorPart = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") or rootPart
 
 assert(
-	shoulderAnchorPart
-		and shoulderAnchorPart:IsA("BasePart"),
+	shoulderAnchorPart and shoulderAnchorPart:IsA("BasePart"),
 	"Spark requires UpperTorso, Torso, or HumanoidRootPart for shoulder homes"
 )
 
-local function getOrCreateShoulderHomeAttachment(
-	name: string,
-	side: number
-): Attachment
-	local existing =
-		shoulderAnchorPart:FindFirstChild(name)
+local function getOrCreateShoulderHomeAttachment(name: string, side: number): Attachment
+	local existing = shoulderAnchorPart:FindFirstChild(name)
 
-	if existing
-		and existing:IsA("Attachment")
-	then
+	if existing and existing:IsA("Attachment") then
 		return existing
 	end
 
@@ -904,44 +778,28 @@ local function getOrCreateShoulderHomeAttachment(
 
 	local attachment = Instance.new("Attachment")
 	attachment.Name = name
-	attachment.Position = Vector3.new(
-		SHOULDER_HOME_HORIZONTAL * side,
-		SHOULDER_HOME_VERTICAL,
-		SHOULDER_HOME_BEHIND
-	)
+	attachment.Position = Vector3.new(SHOULDER_HOME_HORIZONTAL * side, SHOULDER_HOME_VERTICAL, SHOULDER_HOME_BEHIND)
 	attachment.Parent = shoulderAnchorPart
 
 	return attachment
 end
 
-local shoulderHomeLeft =
-	getOrCreateShoulderHomeAttachment(
-		"SparkHomeLeft",
-		HOME_SIDE_LEFT
-	)
+local shoulderHomeLeft = getOrCreateShoulderHomeAttachment("SparkHomeLeft", HOME_SIDE_LEFT)
 
-local shoulderHomeRight =
-	getOrCreateShoulderHomeAttachment(
-		"SparkHomeRight",
-		HOME_SIDE_RIGHT
-	)
+local shoulderHomeRight = getOrCreateShoulderHomeAttachment("SparkHomeRight", HOME_SIDE_RIGHT)
 
-local shoulderOverlapParams =
-	OverlapParams.new()
+local shoulderOverlapParams = OverlapParams.new()
 
-shoulderOverlapParams.FilterType =
-	Enum.RaycastFilterType.Exclude
+shoulderOverlapParams.FilterType = Enum.RaycastFilterType.Exclude
 
 shoulderOverlapParams.FilterDescendantsInstances = {
 	character,
 	spark,
 }
 
-local shoulderRaycastParams =
-	RaycastParams.new()
+local shoulderRaycastParams = RaycastParams.new()
 
-shoulderRaycastParams.FilterType =
-	Enum.RaycastFilterType.Exclude
+shoulderRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
 shoulderRaycastParams.FilterDescendantsInstances = {
 	character,
@@ -950,11 +808,9 @@ shoulderRaycastParams.FilterDescendantsInstances = {
 
 shoulderRaycastParams.IgnoreWater = true
 
-local firstPersonPhysicalRaycastParams =
-	RaycastParams.new()
+local firstPersonPhysicalRaycastParams = RaycastParams.new()
 
-firstPersonPhysicalRaycastParams.FilterType =
-	Enum.RaycastFilterType.Exclude
+firstPersonPhysicalRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
 firstPersonPhysicalRaycastParams.FilterDescendantsInstances = {
 	character,
@@ -963,51 +819,35 @@ firstPersonPhysicalRaycastParams.FilterDescendantsInstances = {
 
 firstPersonPhysicalRaycastParams.IgnoreWater = true
 
-local function resolveFirstPersonPhysicalMovement(
-	previousPosition: Vector3,
-	proposedCFrame: CFrame
-): CFrame
+local function resolveFirstPersonPhysicalMovement(previousPosition: Vector3, proposedCFrame: CFrame): CFrame
 	if not firstPersonPhysicalModeActive then
 		return proposedCFrame
 	end
 
-	local movement =
-		proposedCFrame.Position
-	- previousPosition
+	local movement = proposedCFrame.Position - previousPosition
 
 	if movement.Magnitude <= 0.001 then
 		return proposedCFrame
 	end
 
-	local result =
-		workspace:Spherecast(
-			previousPosition,
-			FIRST_PERSON_PHYSICAL_COLLISION_RADIUS,
-			movement,
-			firstPersonPhysicalRaycastParams
-		)
+	local result = workspace:Spherecast(
+		previousPosition,
+		FIRST_PERSON_PHYSICAL_COLLISION_RADIUS,
+		movement,
+		firstPersonPhysicalRaycastParams
+	)
 
 	if not result then
 		return proposedCFrame
 	end
 
-	local safePosition =
-		result.Position
-		+ result.Normal
-		* (
-			FIRST_PERSON_PHYSICAL_COLLISION_RADIUS
-			+ FIRST_PERSON_PHYSICAL_WALL_PADDING
-		)
+	local safePosition = result.Position
+		+ result.Normal * (FIRST_PERSON_PHYSICAL_COLLISION_RADIUS + FIRST_PERSON_PHYSICAL_WALL_PADDING)
 
-	return CFrame.new(
-		safePosition
-	)
-		* proposedCFrame.Rotation
+	return CFrame.new(safePosition) * proposedCFrame.Rotation
 end
 
-local function getShoulderHomeAttachment(
-	side: number
-): Attachment
+local function getShoulderHomeAttachment(side: number): Attachment
 	if side == HOME_SIDE_LEFT then
 		return shoulderHomeLeft
 	end
@@ -1015,20 +855,11 @@ local function getShoulderHomeAttachment(
 	return shoulderHomeRight
 end
 
-local function isShoulderPositionClear(
-	position: Vector3
-): boolean
-	local nearbyParts =
-		workspace:GetPartBoundsInRadius(
-			position,
-			SHOULDER_CLEARANCE_RADIUS,
-			shoulderOverlapParams
-		)
+local function isShoulderPositionClear(position: Vector3): boolean
+	local nearbyParts = workspace:GetPartBoundsInRadius(position, SHOULDER_CLEARANCE_RADIUS, shoulderOverlapParams)
 
 	for _, nearbyPart in nearbyParts do
-		if nearbyPart:IsA("BasePart")
-			and nearbyPart.CanCollide
-		then
+		if nearbyPart:IsA("BasePart") and nearbyPart.CanCollide then
 			return false
 		end
 	end
@@ -1036,89 +867,54 @@ local function isShoulderPositionClear(
 	return true
 end
 
-local function isShoulderPositionVisible(
-	position: Vector3
-): boolean
+local function isShoulderPositionVisible(position: Vector3): boolean
 	local camera = workspace.CurrentCamera
 
 	if not camera then
 		return true
 	end
 
-	local viewportPoint, onScreen =
-		camera:WorldToViewportPoint(position)
+	local viewportPoint, onScreen = camera:WorldToViewportPoint(position)
 
-	if not onScreen
-		or viewportPoint.Z <= 0
-	then
+	if not onScreen or viewportPoint.Z <= 0 then
 		return false
 	end
 
-	local direction =
-		position
-	- camera.CFrame.Position
+	local direction = position - camera.CFrame.Position
 
 	if direction.Magnitude <= 0.001 then
 		return true
 	end
 
-	local hit =
-		workspace:Raycast(
-			camera.CFrame.Position,
-			direction,
-			shoulderRaycastParams
-		)
+	local hit = workspace:Raycast(camera.CFrame.Position, direction, shoulderRaycastParams)
 
 	return hit == nil
 end
 
-local function clampShoulderPositionAgainstWorld(
-	preferredPosition: Vector3
-): Vector3
+local function clampShoulderPositionAgainstWorld(preferredPosition: Vector3): Vector3
 	local origin = head.Position
 
-	local direction =
-		preferredPosition
-	- origin
+	local direction = preferredPosition - origin
 
 	if direction.Magnitude <= 0.001 then
 		return preferredPosition
 	end
 
-	local result =
-		workspace:Spherecast(
-			origin,
-			SHOULDER_CLEARANCE_RADIUS,
-			direction,
-			shoulderRaycastParams
-		)
+	local result = workspace:Spherecast(origin, SHOULDER_CLEARANCE_RADIUS, direction, shoulderRaycastParams)
 
 	if not result then
 		return preferredPosition
 	end
 
-	return result.Position
-		+ result.Normal
-		* (
-			SHOULDER_CLEARANCE_RADIUS
-			+ SHOULDER_WALL_PADDING
-		)
+	return result.Position + result.Normal * (SHOULDER_CLEARANCE_RADIUS + SHOULDER_WALL_PADDING)
 end
 
-local function getClearShoulderPosition(
-	preferredSide: number
-): Vector3?
-	local preferredAttachment =
-		getShoulderHomeAttachment(
-			preferredSide
-		)
+local function getClearShoulderPosition(preferredSide: number): Vector3?
+	local preferredAttachment = getShoulderHomeAttachment(preferredSide)
 
-	local preferredPosition =
-		preferredAttachment.WorldPosition
+	local preferredPosition = preferredAttachment.WorldPosition
 
-	if isShoulderPositionClear(preferredPosition)
-		and isShoulderPositionVisible(preferredPosition)
-	then
+	if isShoulderPositionClear(preferredPosition) and isShoulderPositionVisible(preferredPosition) then
 		return preferredPosition
 	end
 
@@ -1129,70 +925,43 @@ local function getClearShoulderPosition(
 	return nil
 end
 
-local function getResolvedShoulderPosition(
-	preferredSide: number
-): Vector3
-	local clearShoulderPosition =
-		getClearShoulderPosition(
-			preferredSide
-		)
+local function getResolvedShoulderPosition(preferredSide: number): Vector3
+	local clearShoulderPosition = getClearShoulderPosition(preferredSide)
 
 	if clearShoulderPosition then
 		return clearShoulderPosition
 	end
 
-	local preferredAttachment =
-		getShoulderHomeAttachment(
-			preferredSide
-		)
+	local preferredAttachment = getShoulderHomeAttachment(preferredSide)
 
 	-- Both homes are compromised. Keep Spark physically near the
 	-- shoulder region, but push the preferred position out of geometry.
-	return clampShoulderPositionAgainstWorld(
-		preferredAttachment.WorldPosition
-	)
+	return clampShoulderPositionAgainstWorld(preferredAttachment.WorldPosition)
 end
 
-local function resolveCameraObserverPosition(
-	preferredPosition: Vector3
-): Vector3
+local function resolveCameraObserverPosition(preferredPosition: Vector3): Vector3
 	local camera = workspace.CurrentCamera
 
 	if not camera then
 		return preferredPosition
 	end
 
-	local direction =
-		preferredPosition
-	- camera.CFrame.Position
+	local direction = preferredPosition - camera.CFrame.Position
 
 	if direction.Magnitude <= 0.001 then
 		return preferredPosition
 	end
 
 	local result =
-		workspace:Spherecast(
-			camera.CFrame.Position,
-			CLIMB_OBSERVER_CLEARANCE_RADIUS,
-			direction,
-			shoulderRaycastParams
-		)
+		workspace:Spherecast(camera.CFrame.Position, CLIMB_OBSERVER_CLEARANCE_RADIUS, direction, shoulderRaycastParams)
 
 	if not result then
 		return preferredPosition
 	end
 
-	local safeDistance =
-		math.max(
-			result.Distance
-			- CLIMB_OBSERVER_CLEARANCE_RADIUS
-			- CLIMB_OBSERVER_WALL_PADDING,
-			0.5
-		)
+	local safeDistance = math.max(result.Distance - CLIMB_OBSERVER_CLEARANCE_RADIUS - CLIMB_OBSERVER_WALL_PADDING, 0.5)
 
-	return camera.CFrame.Position
-		+ direction.Unit
-		* safeDistance
+	return camera.CFrame.Position + direction.Unit * safeDistance
 end
 
 local function getCameraDistanceFromCharacter(): number
@@ -1202,126 +971,73 @@ local function getCameraDistanceFromCharacter(): number
 		return 0
 	end
 
-	return (
-		camera.CFrame.Position
-		- head.Position
-	).Magnitude
+	return (camera.CFrame.Position - head.Position).Magnitude
 end
 
-local function getCameraZoomPercent(
-	cameraDistance: number
-): number
-	local minimumZoomDistance =
-		player.CameraMinZoomDistance
+local function getCameraZoomPercent(cameraDistance: number): number
+	local minimumZoomDistance = player.CameraMinZoomDistance
 
-	local maximumZoomDistance =
-		player.CameraMaxZoomDistance
+	local maximumZoomDistance = player.CameraMaxZoomDistance
 
-	local zoomRange =
-		maximumZoomDistance
-	- minimumZoomDistance
+	local zoomRange = maximumZoomDistance - minimumZoomDistance
 
 	if zoomRange <= 0.001 then
 		return 1
 	end
 
-	return math.clamp(
-		(
-			cameraDistance
-			- minimumZoomDistance
-		)
-			/ zoomRange,
-		0,
-		1
-	)
+	return math.clamp((cameraDistance - minimumZoomDistance) / zoomRange, 0, 1)
 end
 
-local function isCameraActuallyFirstPerson(
-	cameraDistance: number
-): boolean
-	return cameraDistance
-		<= FIRST_PERSON_MAX_DISTANCE
+local function isCameraActuallyFirstPerson(cameraDistance: number): boolean
+	return cameraDistance <= FIRST_PERSON_MAX_DISTANCE
 end
 
-local function isCameraAtMaximumZoom(
-	cameraDistance: number
-): boolean
-	local camera =
-		workspace.CurrentCamera
+local function isCameraAtMaximumZoom(cameraDistance: number): boolean
+	local camera = workspace.CurrentCamera
 
-	local maximumZoomDistance =
-		player.CameraMaxZoomDistance
+	local maximumZoomDistance = player.CameraMaxZoomDistance
 
-	local maximumZoomThreshold =
-		maximumZoomDistance
-	- CLIMB_MAX_ZOOM_DISTANCE_TOLERANCE
+	local maximumZoomThreshold = maximumZoomDistance - CLIMB_MAX_ZOOM_DISTANCE_TOLERANCE
 
 	if camera then
-		local actualCameraZoomDistance =
-			(
-				camera.CFrame.Position
-				- camera.Focus.Position
-			).Magnitude
+		local actualCameraZoomDistance = (camera.CFrame.Position - camera.Focus.Position).Magnitude
 
-		if actualCameraZoomDistance
-			>= maximumZoomThreshold
-		then
+		if actualCameraZoomDistance >= maximumZoomThreshold then
 			return true
 		end
 	end
 
 	-- Fallback for custom-camera frames where Focus may be in transition.
-	return cameraDistance
-		>= maximumZoomThreshold
+	return cameraDistance >= maximumZoomThreshold
 end
 
-local function isTrueMinimumFirstPerson(
-	cameraDistance: number
-): boolean
-	return cameraDistance
-		<= player.CameraMinZoomDistance
-		+ FIRST_PERSON_PHYSICAL_DISTANCE_TOLERANCE
+local function isTrueMinimumFirstPerson(cameraDistance: number): boolean
+	return cameraDistance <= player.CameraMinZoomDistance + FIRST_PERSON_PHYSICAL_DISTANCE_TOLERANCE
 end
 
-local function updateFirstPersonPhysicalMode(
-	cameraDistance: number
-)
-	local shouldBePhysical =
-		sparkGameplayVisible
-		and isTrueMinimumFirstPerson(
-			cameraDistance
-		)
+local function updateFirstPersonPhysicalMode(cameraDistance: number)
+	local shouldBePhysical = sparkGameplayVisible and isTrueMinimumFirstPerson(cameraDistance)
 
-	if firstPersonPhysicalModeActive
-		== shouldBePhysical
-	then
+	if firstPersonPhysicalModeActive == shouldBePhysical then
 		return
 	end
 
-	firstPersonPhysicalModeActive =
-		shouldBePhysical
+	firstPersonPhysicalModeActive = shouldBePhysical
 
-	body.CanCollide =
-		firstPersonPhysicalModeActive
+	body.CanCollide = firstPersonPhysicalModeActive
 
 	if not firstPersonPhysicalModeActive then
 		firstPersonRecoveryFarSince = nil
 	end
 end
 
-local function updateCloseShoulderMode(
-	cameraDistance: number
-): boolean
-	local previousMode =
-		closeShoulderMode
+local function updateCloseShoulderMode(cameraDistance: number): boolean
+	local previousMode = closeShoulderMode
 
-	closeShoulderMode =
-		cameraDistance > FIRST_PERSON_MAX_DISTANCE
-		and cameraDistance <= CLOSE_SHOULDER_MAX_DISTANCE
+	closeShoulderMode = cameraDistance > FIRST_PERSON_MAX_DISTANCE and cameraDistance <= CLOSE_SHOULDER_MAX_DISTANCE
 
 	if previousMode ~= closeShoulderMode then
-		lastShoulderHomeModeChangeTime =
-			os.clock()
+		lastShoulderHomeModeChangeTime = os.clock()
 
 		return true
 	end
@@ -1329,22 +1045,15 @@ local function updateCloseShoulderMode(
 	return false
 end
 
-local function updateZoomedOutShoulderMode(
-	cameraDistance: number
-): boolean
-	local previousMode =
-		zoomedOutShoulderMode
+local function updateZoomedOutShoulderMode(cameraDistance: number): boolean
+	local previousMode = zoomedOutShoulderMode
 
 	-- 15-30 studs is the free-camera band.
 	-- Anything beyond 30 returns Spark to the physical shoulder.
-	zoomedOutShoulderMode =
-		cameraDistance > FREE_CAMERA_MAX_DISTANCE
+	zoomedOutShoulderMode = cameraDistance > FREE_CAMERA_MAX_DISTANCE
 
-	if previousMode
-		~= zoomedOutShoulderMode
-	then
-		lastShoulderHomeModeChangeTime =
-			os.clock()
+	if previousMode ~= zoomedOutShoulderMode then
+		lastShoulderHomeModeChangeTime = os.clock()
 
 		return true
 	end
@@ -1352,11 +1061,8 @@ local function updateZoomedOutShoulderMode(
 	return false
 end
 
-local function updateClimbObserverMode(
-	cameraDistance: number
-): boolean
-	local previousMode =
-		climbObserverMode
+local function updateClimbObserverMode(cameraDistance: number): boolean
+	local previousMode = climbObserverMode
 
 	-- Re-enable the existing top-right climbing observer ONLY when:
 	--   1) the character is actually climbing, and
@@ -1365,43 +1071,30 @@ local function updateClimbObserverMode(
 	-- isCameraAtMaximumZoom() reads player.CameraMaxZoomDistance every frame,
 	-- so this follows whatever max zoom the game/player is currently configured for.
 	-- The helper includes a tiny tolerance for Roblox camera-distance rounding.
-	climbObserverMode =
-		isCharacterClimbing()
-		and isCameraAtMaximumZoom(
-			cameraDistance
-		)
+	climbObserverMode = isCharacterClimbing() and isCameraAtMaximumZoom(cameraDistance)
 
 	if previousMode ~= climbObserverMode then
-		lastClimbObserverModeChangeTime =
-			os.clock()
+		lastClimbObserverModeChangeTime = os.clock()
 
 		-- Entering observer is its own authored travel transition.
 		-- Exiting observer should NOT inherit the aggressive shoulder-switch
 		-- response, otherwise Spark snaps violently back across the view.
 		if climbObserverMode then
-			lastShoulderHomeModeChangeTime =
-				os.clock()
+			lastShoulderHomeModeChangeTime = os.clock()
 		end
 
 		if DEBUG_CHARACTER_CONTROLLER_STATE then
-			local camera =
-				workspace.CurrentCamera
+			local camera = workspace.CurrentCamera
 
-			local actualZoomDistance =
-				if camera
-				then (
-					camera.CFrame.Position
-					- camera.Focus.Position
-				).Magnitude
+			local actualZoomDistance = if camera
+				then (camera.CFrame.Position - camera.Focus.Position).Magnitude
 				else cameraDistance
 
 			print(
 				"[SparkFollower][ClimbObserver]",
 				if climbObserverMode then "ENTER" else "EXIT",
 				"| ccl =",
-				tostring(
-					currentCharacterControllerState
-				),
+				tostring(currentCharacterControllerState),
 				"| humanoid =",
 				humanoid:GetState().Name,
 				"| zoom =",
@@ -1432,53 +1125,21 @@ local function getClimbingScreenBounds()
 		return nil
 	end
 
-	local viewportSize =
-		camera.ViewportSize
+	local viewportSize = camera.ViewportSize
 
-	local topLeftInset =
-		select(
-			1,
-			GuiService:GetGuiInset()
-		)
+	local topLeftInset = select(1, GuiService:GetGuiInset())
 
-	local minX =
-		math.max(
-			viewportSize.X
-			* CLIMB_SCREEN_SAFE_X_FRACTION,
-			8
-		)
+	local minX = math.max(viewportSize.X * CLIMB_SCREEN_SAFE_X_FRACTION, 8)
 
-	local maxX =
-		viewportSize.X
-	- minX
+	local maxX = viewportSize.X - minX
 
-	local minY =
-		math.max(
-			viewportSize.Y
-			* CLIMB_SCREEN_SAFE_TOP_FRACTION,
-			topLeftInset.Y + 8
-		)
+	local minY = math.max(viewportSize.Y * CLIMB_SCREEN_SAFE_TOP_FRACTION, topLeftInset.Y + 8)
 
-	local maxY =
-		viewportSize.Y
-	- math.max(
-		viewportSize.Y
-			* CLIMB_SCREEN_SAFE_BOTTOM_FRACTION,
-		8
-	)
+	local maxY = viewportSize.Y - math.max(viewportSize.Y * CLIMB_SCREEN_SAFE_BOTTOM_FRACTION, 8)
 
-	local pillSafeX =
-		math.max(
-			CLIMB_ROBLOX_PILL_SAFE_X_PIXELS,
-			viewportSize.X
-			* CLIMB_ROBLOX_PILL_SAFE_X_FRACTION
-		)
+	local pillSafeX = math.max(CLIMB_ROBLOX_PILL_SAFE_X_PIXELS, viewportSize.X * CLIMB_ROBLOX_PILL_SAFE_X_FRACTION)
 
-	local pillSafeY =
-		math.max(
-			CLIMB_ROBLOX_PILL_SAFE_Y_PIXELS,
-			topLeftInset.Y + 34
-		)
+	local pillSafeY = math.max(CLIMB_ROBLOX_PILL_SAFE_Y_PIXELS, topLeftInset.Y + 34)
 
 	return {
 		ViewportSize = viewportSize,
@@ -1491,19 +1152,15 @@ local function getClimbingScreenBounds()
 	}
 end
 
-local function isViewportPointClimbSafe(
-	viewportPoint: Vector3
-): boolean
-	local bounds =
-		getClimbingScreenBounds()
+local function isViewportPointClimbSafe(viewportPoint: Vector3): boolean
+	local bounds = getClimbingScreenBounds()
 
-	if not bounds
-		or viewportPoint.Z <= 0
-	then
+	if not bounds or viewportPoint.Z <= 0 then
 		return false
 	end
 
-	if viewportPoint.X < bounds.MinX
+	if
+		viewportPoint.X < bounds.MinX
 		or viewportPoint.X > bounds.MaxX
 		or viewportPoint.Y < bounds.MinY
 		or viewportPoint.Y > bounds.MaxY
@@ -1512,18 +1169,14 @@ local function isViewportPointClimbSafe(
 	end
 
 	-- Avoid the Roblox/CoreGui pill specifically.
-	if viewportPoint.X < bounds.PillSafeX
-		and viewportPoint.Y < bounds.PillSafeY
-	then
+	if viewportPoint.X < bounds.PillSafeX and viewportPoint.Y < bounds.PillSafeY then
 		return false
 	end
 
 	return true
 end
 
-local function resolveClimbingScreenSafeCFrame(
-	preferredCFrame: CFrame
-): CFrame
+local function resolveClimbingScreenSafeCFrame(preferredCFrame: CFrame): CFrame
 	local camera = workspace.CurrentCamera
 	local bounds = getClimbingScreenBounds()
 
@@ -1531,173 +1184,77 @@ local function resolveClimbingScreenSafeCFrame(
 		return preferredCFrame
 	end
 
-	local viewportPoint =
-		camera:WorldToViewportPoint(
-			preferredCFrame.Position
-		)
+	local viewportPoint = camera:WorldToViewportPoint(preferredCFrame.Position)
 
 	if isViewportPointClimbSafe(viewportPoint) then
 		return preferredCFrame
 	end
 
-	local clampedX =
-		math.clamp(
-			viewportPoint.X,
-			bounds.MinX,
-			bounds.MaxX
-		)
+	local clampedX = math.clamp(viewportPoint.X, bounds.MinX, bounds.MaxX)
 
-	local clampedY =
-		math.clamp(
-			viewportPoint.Y,
-			bounds.MinY,
-			bounds.MaxY
-		)
+	local clampedY = math.clamp(viewportPoint.Y, bounds.MinY, bounds.MaxY)
 
 	-- If the target is in the top-left CoreGui region, push it horizontally
 	-- clear of the Roblox pill instead of merely clamping to the left margin.
-	if clampedX < bounds.PillSafeX
-		and clampedY < bounds.PillSafeY
-	then
-		clampedX =
-			bounds.PillSafeX
+	if clampedX < bounds.PillSafeX and clampedY < bounds.PillSafeY then
+		clampedX = bounds.PillSafeX
 	end
 
-	local targetDepth =
-		math.max(
-			(
-				preferredCFrame.Position
-				- camera.CFrame.Position
-			):Dot(
-				camera.CFrame.LookVector
-			),
-			4
-		)
+	local targetDepth = math.max((preferredCFrame.Position - camera.CFrame.Position):Dot(camera.CFrame.LookVector), 4)
 
-	local screenRay =
-		camera:ViewportPointToRay(
-			clampedX,
-			clampedY
-		)
+	local screenRay = camera:ViewportPointToRay(clampedX, clampedY)
 
-	local rayForwardDot =
-		math.max(
-			screenRay.Direction:Dot(
-				camera.CFrame.LookVector
-			),
-			0.15
-		)
+	local rayForwardDot = math.max(screenRay.Direction:Dot(camera.CFrame.LookVector), 0.15)
 
-	local correctedDistance =
-		targetDepth
-		/ rayForwardDot
+	local correctedDistance = targetDepth / rayForwardDot
 
-	local correctedPosition =
-		screenRay.Origin
-		+ screenRay.Direction
-		* correctedDistance
+	local correctedPosition = screenRay.Origin + screenRay.Direction * correctedDistance
 
-	return CFrame.new(correctedPosition)
-		* preferredCFrame.Rotation
+	return CFrame.new(correctedPosition) * preferredCFrame.Rotation
 end
 
-local function getResponseAlpha(
-	value: number,
-	startValue: number,
-	fullValue: number
-): number
+local function getResponseAlpha(value: number, startValue: number, fullValue: number): number
 	if fullValue <= startValue then
 		return 1
 	end
 
-	return math.clamp(
-		(value - startValue)
-			/ (fullValue - startValue),
-		0,
-		1
-	)
+	return math.clamp((value - startValue) / (fullValue - startValue), 0, 1)
 end
 
-local function applyClimbingFreeCameraVerticalBias(
-	targetCFrame: CFrame,
-	cameraDistance: number
-): CFrame
-	if not isCharacterClimbing()
-		or climbObserverMode
-	then
+local function applyClimbingFreeCameraVerticalBias(targetCFrame: CFrame, cameraDistance: number): CFrame
+	if not isCharacterClimbing() or climbObserverMode then
 		return targetCFrame
 	end
 
 	-- Only bias the middle/free-camera climbing band.
 	-- Shoulder and first-person homes keep their authored positions.
-	if cameraDistance <= CLOSE_SHOULDER_MAX_DISTANCE
-		or cameraDistance > FREE_CAMERA_MAX_DISTANCE
-	then
+	if cameraDistance <= CLOSE_SHOULDER_MAX_DISTANCE or cameraDistance > FREE_CAMERA_MAX_DISTANCE then
 		return targetCFrame
 	end
 
-	local downwardSpeed =
-		math.max(
-			0,
-			-currentCharacterVerticalVelocityY
-		)
+	local downwardSpeed = math.max(0, -currentCharacterVerticalVelocityY)
 
-	local descentAlpha =
-		getResponseAlpha(
-			downwardSpeed,
-			CLIMB_DESCENT_MIN_SPEED,
-			CLIMB_DESCENT_FULL_SPEED
-		)
+	local descentAlpha = getResponseAlpha(downwardSpeed, CLIMB_DESCENT_MIN_SPEED, CLIMB_DESCENT_FULL_SPEED)
 
-	local verticalOffset =
-		CLIMB_FREECAM_BASE_WORLD_Y_OFFSET
-		+ (
-			CLIMB_DESCENT_EXTRA_WORLD_Y_OFFSET
-			* descentAlpha
-		)
+	local verticalOffset = CLIMB_FREECAM_BASE_WORLD_Y_OFFSET + (CLIMB_DESCENT_EXTRA_WORLD_Y_OFFSET * descentAlpha)
 
-	local adjustedPosition =
-		targetCFrame.Position
-		+ Vector3.new(
-			0,
-			verticalOffset,
-			0
-		)
+	local adjustedPosition = targetCFrame.Position + Vector3.new(0, verticalOffset, 0)
 
-	local descentPitch =
-		math.rad(
-			CLIMB_DESCENT_PITCH_DEGREES
-			* descentAlpha
-		)
+	local descentPitch = math.rad(CLIMB_DESCENT_PITCH_DEGREES * descentAlpha)
 
-	return CFrame.new(
-		adjustedPosition
-	)
-		* targetCFrame.Rotation
-		* CFrame.Angles(
-			descentPitch,
-			0,
-			0
-		)
+	return CFrame.new(adjustedPosition) * targetCFrame.Rotation * CFrame.Angles(descentPitch, 0, 0)
 end
 
-local function isSparkOutsideClimbingSafeScreen(
-	sparkCFrame: CFrame
-): boolean
+local function isSparkOutsideClimbingSafeScreen(sparkCFrame: CFrame): boolean
 	local camera = workspace.CurrentCamera
 
 	if not camera then
 		return false
 	end
 
-	local viewportPoint =
-		camera:WorldToViewportPoint(
-			sparkCFrame.Position
-		)
+	local viewportPoint = camera:WorldToViewportPoint(sparkCFrame.Position)
 
-	return not isViewportPointClimbSafe(
-		viewportPoint
-	)
+	return not isViewportPointClimbSafe(viewportPoint)
 end
 
 ----------------------------------------------------------------
@@ -1711,83 +1268,43 @@ local function getFirstPersonTargetCFrame(): CFrame
 		return rootPart.CFrame
 	end
 
-	local viewportSize =
-		camera.ViewportSize
+	local viewportSize = camera.ViewportSize
 
-	local horizontalOffset =
-		math.abs(
-			FIRST_PERSON_OFFSET.X
-		)
+	local horizontalOffset = math.abs(FIRST_PERSON_OFFSET.X)
 
 	if viewportSize.Y > 0 then
-		local aspectRatio =
-			viewportSize.X
-			/ viewportSize.Y
+		local aspectRatio = viewportSize.X / viewportSize.Y
 
-		local depth =
-			math.max(
-				math.abs(
-					FIRST_PERSON_OFFSET.Z
-				),
-				0.01
-			)
+		local depth = math.max(math.abs(FIRST_PERSON_OFFSET.Z), 0.01)
 
-		local halfVisibleWidthAtDepth =
-			math.tan(
-				math.rad(
-					camera.FieldOfView
-				)
-				* 0.5
-			)
-			* depth
-			* aspectRatio
+		local halfVisibleWidthAtDepth = math.tan(math.rad(camera.FieldOfView) * 0.5) * depth * aspectRatio
 
-		local safeHorizontalOffset =
-			halfVisibleWidthAtDepth
-			* FIRST_PERSON_SCREEN_EDGE_FRACTION
+		local safeHorizontalOffset = halfVisibleWidthAtDepth * FIRST_PERSON_SCREEN_EDGE_FRACTION
 
-		horizontalOffset =
-			math.min(
-				horizontalOffset,
-				safeHorizontalOffset
-			)
+		horizontalOffset = math.min(horizontalOffset, safeHorizontalOffset)
 	end
 
 	local firstPersonOffset =
-		Vector3.new(
-			horizontalOffset
-			* HOME_SIDE_RIGHT,
-			FIRST_PERSON_OFFSET.Y,
-			FIRST_PERSON_OFFSET.Z
-		)
+		Vector3.new(horizontalOffset * HOME_SIDE_RIGHT, FIRST_PERSON_OFFSET.Y, FIRST_PERSON_OFFSET.Z)
 
-	local position =
-		camera.CFrame:PointToWorldSpace(
-			firstPersonOffset
-		)
+	local position = camera.CFrame:PointToWorldSpace(firstPersonOffset)
 
-	return CFrame.new(position)
-		* camera.CFrame.Rotation
+	return CFrame.new(position) * camera.CFrame.Rotation
 end
 
 local function getShoulderTargetCFrame(): CFrame
 	local camera = workspace.CurrentCamera
 
-	local position =
-		getResolvedShoulderPosition(
-			HOME_SIDE_RIGHT
-		)
+	local position = getResolvedShoulderPosition(HOME_SIDE_RIGHT)
 
 	-- Keep Spark visually parallel with the camera while he flies
 	-- into the shoulder home. This prevents his wings presenting
 	-- at strange world-space angles during catch-up.
 	if camera then
-		return CFrame.new(position)
-			* camera.CFrame.Rotation
+		return CFrame.new(position) * camera.CFrame.Rotation
 	end
 
-	return CFrame.new(position)
-		* rootPart.CFrame.Rotation
+	return CFrame.new(position) * rootPart.CFrame.Rotation
 end
 
 local function getClimbingTargetCFrame(): CFrame
@@ -1797,57 +1314,25 @@ local function getClimbingTargetCFrame(): CFrame
 		return getShoulderTargetCFrame()
 	end
 
-	local viewportSize =
-		camera.ViewportSize
+	local viewportSize = camera.ViewportSize
 
-	local topLeftInset =
-		select(
-			1,
-			GuiService:GetGuiInset()
-		)
+	local topLeftInset = select(1, GuiService:GetGuiInset())
 
 	-- Observer mode is a SCREEN position, not a character-relative world offset.
 	-- That is what makes it stable at every camera angle and ladder height.
-	local observerScreenX =
-		viewportSize.X
-		* CLIMB_OBSERVER_SCREEN_X_FRACTION
+	local observerScreenX = viewportSize.X * CLIMB_OBSERVER_SCREEN_X_FRACTION
 
-	local observerScreenY =
-		math.max(
-			viewportSize.Y
-			* CLIMB_OBSERVER_SCREEN_Y_FRACTION,
-			topLeftInset.Y + 42
-		)
+	local observerScreenY = math.max(viewportSize.Y * CLIMB_OBSERVER_SCREEN_Y_FRACTION, topLeftInset.Y + 42)
 
-	local observerRay =
-		camera:ViewportPointToRay(
-			observerScreenX,
-			observerScreenY
-		)
+	local observerRay = camera:ViewportPointToRay(observerScreenX, observerScreenY)
 
-	local preferredObserverPosition =
-		observerRay.Origin
-		+ observerRay.Direction
-		* CLIMB_OBSERVER_CAMERA_DEPTH
+	local preferredObserverPosition = observerRay.Origin + observerRay.Direction * CLIMB_OBSERVER_CAMERA_DEPTH
 
-	local resolvedObserverPosition =
-		resolveCameraObserverPosition(
-			preferredObserverPosition
-		)
+	local resolvedObserverPosition = resolveCameraObserverPosition(preferredObserverPosition)
 
-	local watchPosition =
-		head.Position
-		+ Vector3.new(
-			0,
-			0.35,
-			0
-		)
+	local watchPosition = head.Position + Vector3.new(0, 0.35, 0)
 
-	return CFrame.lookAt(
-		resolvedObserverPosition,
-		watchPosition,
-		camera.CFrame.UpVector
-	)
+	return CFrame.lookAt(resolvedObserverPosition, watchPosition, camera.CFrame.UpVector)
 end
 
 local function getTargetCFrame(): CFrame
@@ -1868,8 +1353,7 @@ local function getTargetCFrame(): CFrame
 	-- Add future Swimming/Crouching/Crawling/etc. branches HERE.
 	-- Explicit focus still wins over all neutral camera-home behavior.
 
-	local cameraDistance =
-		getCameraDistanceFromCharacter()
+	local cameraDistance = getCameraDistanceFromCharacter()
 
 	------------------------------------------------------------
 	-- <= 2 STUDS: FIRST-PERSON CAMERA COMPANION
@@ -1886,16 +1370,11 @@ local function getTargetCFrame(): CFrame
 	local resolvedTargetCFrame: CFrame
 
 	if closeShoulderMode then
-		resolvedTargetCFrame =
-			getShoulderTargetCFrame()
-
+		resolvedTargetCFrame = getShoulderTargetCFrame()
 	elseif zoomedOutShoulderMode then
-		resolvedTargetCFrame =
-			getShoulderTargetCFrame()
-
+		resolvedTargetCFrame = getShoulderTargetCFrame()
 	else
-		resolvedTargetCFrame =
-			getFirstPersonTargetCFrame()
+		resolvedTargetCFrame = getFirstPersonTargetCFrame()
 	end
 
 	------------------------------------------------------------
@@ -1906,25 +1385,15 @@ local function getTargetCFrame(): CFrame
 	-- This prevents vertical ladder travel from throwing Spark off-camera.
 	------------------------------------------------------------
 
-	if isCharacterClimbing()
-		and cameraDistance
-		> CLOSE_SHOULDER_MAX_DISTANCE
-	then
+	if isCharacterClimbing() and cameraDistance > CLOSE_SHOULDER_MAX_DISTANCE then
 		-- In the free-camera climbing band Spark starts one stud lower, then leads
 		-- progressively farther downward as the character descends. The same
 		-- helper also gives him a slight nose-down attitude during descent.
-		resolvedTargetCFrame =
-			applyClimbingFreeCameraVerticalBias(
-				resolvedTargetCFrame,
-				cameraDistance
-			)
+		resolvedTargetCFrame = applyClimbingFreeCameraVerticalBias(resolvedTargetCFrame, cameraDistance)
 
 		-- Safety clamp runs AFTER the offset so the lower target can never
 		-- deliberately place Spark outside the visible safe region.
-		resolvedTargetCFrame =
-			resolveClimbingScreenSafeCFrame(
-				resolvedTargetCFrame
-			)
+		resolvedTargetCFrame = resolveClimbingScreenSafeCFrame(resolvedTargetCFrame)
 	end
 
 	return resolvedTargetCFrame
@@ -1955,21 +1424,14 @@ local function getCameraAngularSpeedDegrees(dt: number): number
 		return 0
 	end
 
-	local lookDot = math.clamp(
-		previousLookVector:Dot(currentCameraLookVector),
-		-1,
-		1
-	)
+	local lookDot = math.clamp(previousLookVector:Dot(currentCameraLookVector), -1, 1)
 
 	local angularDifferenceRadians = math.acos(lookDot)
 
 	return math.deg(angularDifferenceRadians) / dt
 end
 
-local function getTargetLateralSpeed(
-	targetCFrame: CFrame,
-	dt: number
-): number
+local function getTargetLateralSpeed(targetCFrame: CFrame, dt: number): number
 	local currentTargetPosition = targetCFrame.Position
 	local previousPosition = previousTargetPosition
 
@@ -1985,40 +1447,24 @@ local function getTargetLateralSpeed(
 		return 0
 	end
 
-	local targetMovement =
-		currentTargetPosition
-	- previousPosition
+	local targetMovement = currentTargetPosition - previousPosition
 
 	-- Only care about movement across the camera's horizontal axis.
 	-- Forward/back depth changes from zooming should therefore retain
 	-- Spark's slower fluttering transition.
-	return math.abs(
-		targetMovement:Dot(
-			camera.CFrame.RightVector
-		)
-	) / dt
+	return math.abs(targetMovement:Dot(camera.CFrame.RightVector)) / dt
 end
 
-local function getCameraZoomSpeed(
-	cameraDistance: number,
-	dt: number
-): number
-	local previousDistance =
-		previousCameraDistance
+local function getCameraZoomSpeed(cameraDistance: number, dt: number): number
+	local previousDistance = previousCameraDistance
 
-	previousCameraDistance =
-		cameraDistance
+	previousCameraDistance = cameraDistance
 
-	if previousDistance == nil
-		or dt <= 0
-	then
+	if previousDistance == nil or dt <= 0 then
 		return 0
 	end
 
-	return math.abs(
-		cameraDistance
-		- previousDistance
-	) / dt
+	return math.abs(cameraDistance - previousDistance) / dt
 end
 
 local function getCurrentSmoothTime(
@@ -2030,81 +1476,46 @@ local function getCurrentSmoothTime(
 ): number
 	-- Focused targets remain deliberate and world-relative, except while
 	-- climbing at maximum zoom: observer mode owns Spark completely.
-	if focusedModel
-		and not climbObserverMode
-	then
+	if focusedModel and not climbObserverMode then
 		return SMOOTH_TIME
 	end
 
 	local zoomResponseAlpha =
-		getResponseAlpha(
-			cameraZoomSpeed,
-			CAMERA_ZOOM_RESPONSE_START_SPEED,
-			CAMERA_ZOOM_RESPONSE_FULL_SPEED
-		)
+		getResponseAlpha(cameraZoomSpeed, CAMERA_ZOOM_RESPONSE_START_SPEED, CAMERA_ZOOM_RESPONSE_FULL_SPEED)
 
 	-- Ordinary camera-mode changes keep the original flutter.
 	-- Aggressive zoom is allowed to override the grace period.
-	if os.clock() - lastCameraModeChangeTime
-		< CAMERA_MODE_TRANSITION_GRACE
-	then
-		return SMOOTH_TIME
-			+ (
-				FAST_CAMERA_SMOOTH_TIME
-				- SMOOTH_TIME
-			)
-			* zoomResponseAlpha
+	if os.clock() - lastCameraModeChangeTime < CAMERA_MODE_TRANSITION_GRACE then
+		return SMOOTH_TIME + (FAST_CAMERA_SMOOTH_TIME - SMOOTH_TIME) * zoomResponseAlpha
 	end
 
-	local distanceFromTarget =
-		(
-			currentSparkCFrame.Position
-			- targetCFrame.Position
-		).Magnitude
+	local distanceFromTarget = (currentSparkCFrame.Position - targetCFrame.Position).Magnitude
 
 	local targetDistanceResponseAlpha =
-		getResponseAlpha(
-			distanceFromTarget,
-			TARGET_DISTANCE_RESPONSE_START,
-			TARGET_DISTANCE_RESPONSE_FULL
-		)
+		getResponseAlpha(distanceFromTarget, TARGET_DISTANCE_RESPONSE_START, TARGET_DISTANCE_RESPONSE_FULL)
 
 	local shoulderSwitchResponseAlpha = 0
 
-	if os.clock() - lastShoulderHomeModeChangeTime
-		< SHOULDER_HOME_SWITCH_FAST_DURATION
-	then
-		shoulderSwitchResponseAlpha =
-			SHOULDER_HOME_SWITCH_RESPONSE_ALPHA
+	if os.clock() - lastShoulderHomeModeChangeTime < SHOULDER_HOME_SWITCH_FAST_DURATION then
+		shoulderSwitchResponseAlpha = SHOULDER_HOME_SWITCH_RESPONSE_ALPHA
 	end
 
 	local climbExitResponseAlpha = 0
 
-	if not isCharacterClimbing()
-		and os.clock() - lastClimbStateChangeTime
-		< CLIMB_EXIT_FAST_DURATION
-	then
-		climbExitResponseAlpha =
-			CLIMB_EXIT_RESPONSE_ALPHA
+	if not isCharacterClimbing() and os.clock() - lastClimbStateChangeTime < CLIMB_EXIT_FAST_DURATION then
+		climbExitResponseAlpha = CLIMB_EXIT_RESPONSE_ALPHA
 	end
 
-	local verticalResponseAlpha =
-		getResponseAlpha(
-			currentCharacterVerticalSpeed,
-			CLIMB_VERTICAL_FAST_RESPONSE_START_SPEED,
-			CLIMB_VERTICAL_FAST_RESPONSE_FULL_SPEED
-		)
+	local verticalResponseAlpha = getResponseAlpha(
+		currentCharacterVerticalSpeed,
+		CLIMB_VERTICAL_FAST_RESPONSE_START_SPEED,
+		CLIMB_VERTICAL_FAST_RESPONSE_FULL_SPEED
+	)
 
 	local offscreenResponseAlpha = 0
 
-	if isCharacterClimbing()
-		and not climbObserverMode
-		and isSparkOutsideClimbingSafeScreen(
-			currentSparkCFrame
-		)
-	then
-		offscreenResponseAlpha =
-			CLIMB_OFFSCREEN_RESPONSE_ALPHA
+	if isCharacterClimbing() and not climbObserverMode and isSparkOutsideClimbingSafeScreen(currentSparkCFrame) then
+		offscreenResponseAlpha = CLIMB_OFFSCREEN_RESPONSE_ALPHA
 	end
 
 	------------------------------------------------------------
@@ -2115,45 +1526,30 @@ local function getCurrentSmoothTime(
 	-- the relaxed flutter that feels good everywhere else.
 	------------------------------------------------------------
 
-	local characterDownwardSpeed =
-		math.max(
-			0,
-			-currentCharacterVerticalVelocityY
-		)
+	local characterDownwardSpeed = math.max(0, -currentCharacterVerticalVelocityY)
 
-	local humanoidState =
-		humanoid:GetState()
+	local humanoidState = humanoid:GetState()
 
-	local characterIsFalling =
-		humanoidState == Enum.HumanoidStateType.Freefall
+	local characterIsFalling = humanoidState == Enum.HumanoidStateType.Freefall
 		or humanoidState == Enum.HumanoidStateType.FallingDown
 
-	if characterDownwardSpeed
-		>= CLIMB_DESCENT_FAST_SPEED_THRESHOLD
-		or (
-			characterIsFalling
-				and characterDownwardSpeed > 0.25
-		)
+	if
+		characterDownwardSpeed >= CLIMB_DESCENT_FAST_SPEED_THRESHOLD
+		or (characterIsFalling and characterDownwardSpeed > 0.25)
 	then
 		return CLIMB_DESCENT_FAST_SMOOTH_TIME
 	end
 
 	-- Give the shoulder -> climbing-observer transition a deliberate tween-like
 	-- flight instead of letting emergency catch-up immediately zip Spark there.
-	if climbObserverMode
-		and os.clock() - lastClimbObserverModeChangeTime
-		< CLIMB_OBSERVER_ENTRY_SMOOTH_DURATION
-	then
+	if climbObserverMode and os.clock() - lastClimbObserverModeChangeTime < CLIMB_OBSERVER_ENTRY_SMOOTH_DURATION then
 		return CLIMB_OBSERVER_ENTRY_SMOOTH_TIME
 	end
 
 	-- When max zoom is released, or the Humanoid leaves Climbing for
 	-- Running/Freefall/FallingDown, glide away from the observer perch instead
 	-- of using the normal aggressive catch-up response.
-	if not climbObserverMode
-		and os.clock() - lastClimbObserverModeChangeTime
-		< 0.95
-	then
+	if not climbObserverMode and os.clock() - lastClimbObserverModeChangeTime < 0.95 then
 		return 0.68
 	end
 
@@ -2161,81 +1557,36 @@ local function getCurrentSmoothTime(
 	-- arrived at the observer perch this lets him continue following camera
 	-- framing naturally while he watches.
 	if isCharacterClimbing() then
-		local cameraResponseAlpha =
-			getResponseAlpha(
-				cameraAngularSpeedDegrees,
-				CAMERA_FAST_RESPONSE_START_DEGREES,
-				CAMERA_FAST_RESPONSE_FULL_DEGREES
-			)
-
-		local lateralResponseAlpha =
-			getResponseAlpha(
-				targetLateralSpeed,
-				TARGET_LATERAL_RESPONSE_START_SPEED,
-				TARGET_LATERAL_RESPONSE_FULL_SPEED
-			)
-
-		local climbingResponseAlpha =
-			math.max(
-				CLIMB_MIN_RESPONSE_ALPHA,
-				cameraResponseAlpha,
-				lateralResponseAlpha,
-				zoomResponseAlpha,
-				targetDistanceResponseAlpha,
-				verticalResponseAlpha,
-				offscreenResponseAlpha
-			)
-
-		return SMOOTH_TIME
-			+ (
-				FAST_CAMERA_SMOOTH_TIME
-				- SMOOTH_TIME
-			)
-			* climbingResponseAlpha
-	end
-
-	-- Once Spark is living at the shoulder, stop treating ordinary
-	-- camera rotation as permission to fling him around world-space.
-	-- Maximum zoom is special ONLY through climbObserverMode.
-	if zoomedOutShoulderMode
-		or closeShoulderMode
-	then
-		local shoulderResponseAlpha =
-			math.max(
-				zoomResponseAlpha,
-				targetDistanceResponseAlpha,
-				shoulderSwitchResponseAlpha,
-				climbExitResponseAlpha,
-				verticalResponseAlpha,
-				offscreenResponseAlpha
-			)
-
-		return SMOOTH_TIME
-			+ (
-				FAST_CAMERA_SMOOTH_TIME
-				- SMOOTH_TIME
-			)
-			* shoulderResponseAlpha
-	end
-
-	local cameraResponseAlpha =
-		getResponseAlpha(
+		local cameraResponseAlpha = getResponseAlpha(
 			cameraAngularSpeedDegrees,
 			CAMERA_FAST_RESPONSE_START_DEGREES,
 			CAMERA_FAST_RESPONSE_FULL_DEGREES
 		)
 
-	local lateralResponseAlpha =
-		getResponseAlpha(
+		local lateralResponseAlpha = getResponseAlpha(
 			targetLateralSpeed,
 			TARGET_LATERAL_RESPONSE_START_SPEED,
 			TARGET_LATERAL_RESPONSE_FULL_SPEED
 		)
 
-	local fastResponseAlpha =
-		math.max(
+		local climbingResponseAlpha = math.max(
+			CLIMB_MIN_RESPONSE_ALPHA,
 			cameraResponseAlpha,
 			lateralResponseAlpha,
+			zoomResponseAlpha,
+			targetDistanceResponseAlpha,
+			verticalResponseAlpha,
+			offscreenResponseAlpha
+		)
+
+		return SMOOTH_TIME + (FAST_CAMERA_SMOOTH_TIME - SMOOTH_TIME) * climbingResponseAlpha
+	end
+
+	-- Once Spark is living at the shoulder, stop treating ordinary
+	-- camera rotation as permission to fling him around world-space.
+	-- Maximum zoom is special ONLY through climbObserverMode.
+	if zoomedOutShoulderMode or closeShoulderMode then
+		local shoulderResponseAlpha = math.max(
 			zoomResponseAlpha,
 			targetDistanceResponseAlpha,
 			shoulderSwitchResponseAlpha,
@@ -2244,35 +1595,45 @@ local function getCurrentSmoothTime(
 			offscreenResponseAlpha
 		)
 
-	return SMOOTH_TIME
-		+ (
-			FAST_CAMERA_SMOOTH_TIME
-			- SMOOTH_TIME
-		)
-		* fastResponseAlpha
+		return SMOOTH_TIME + (FAST_CAMERA_SMOOTH_TIME - SMOOTH_TIME) * shoulderResponseAlpha
+	end
+
+	local cameraResponseAlpha = getResponseAlpha(
+		cameraAngularSpeedDegrees,
+		CAMERA_FAST_RESPONSE_START_DEGREES,
+		CAMERA_FAST_RESPONSE_FULL_DEGREES
+	)
+
+	local lateralResponseAlpha =
+		getResponseAlpha(targetLateralSpeed, TARGET_LATERAL_RESPONSE_START_SPEED, TARGET_LATERAL_RESPONSE_FULL_SPEED)
+
+	local fastResponseAlpha = math.max(
+		cameraResponseAlpha,
+		lateralResponseAlpha,
+		zoomResponseAlpha,
+		targetDistanceResponseAlpha,
+		shoulderSwitchResponseAlpha,
+		climbExitResponseAlpha,
+		verticalResponseAlpha,
+		offscreenResponseAlpha
+	)
+
+	return SMOOTH_TIME + (FAST_CAMERA_SMOOTH_TIME - SMOOTH_TIME) * fastResponseAlpha
 end
 
 ----------------------------------------------------------------
 -- INITIAL STATE
 ----------------------------------------------------------------
 
-local initialCameraDistance =
-	getCameraDistanceFromCharacter()
+local initialCameraDistance = getCameraDistanceFromCharacter()
 
-updateZoomedOutShoulderMode(
-	initialCameraDistance
-)
+updateZoomedOutShoulderMode(initialCameraDistance)
 
-updateCloseShoulderMode(
-	initialCameraDistance
-)
+updateCloseShoulderMode(initialCameraDistance)
 
-updateClimbObserverMode(
-	initialCameraDistance
-)
+updateClimbObserverMode(initialCameraDistance)
 
-previousCameraDistance =
-	initialCameraDistance
+previousCameraDistance = initialCameraDistance
 
 local currentCFrame = getTargetCFrame()
 
@@ -2283,7 +1644,8 @@ local smoothVelocity = CFrame.new()
 spark:PivotTo(currentCFrame)
 
 local function playFirstPersonRecoveryTeleport()
-	if firstPersonRecoveryActive
+	if
+		firstPersonRecoveryActive
 		or not firstPersonPhysicalModeActive
 		or not sparkGameplayVisible
 		or sparkVisuals.SoulBurstInProgress
@@ -2304,19 +1666,14 @@ local function playFirstPersonRecoveryTeleport()
 
 			-- Re-resolve at the invisible moment. If the player changed zoom
 			-- during the dissolve, Spark reforms at whatever target is correct now.
-			currentCFrame =
-				getTargetCFrame()
+			currentCFrame = getTargetCFrame()
 
-			smoothVelocity =
-				CFrame.new()
+			smoothVelocity = CFrame.new()
 
-			spark:PivotTo(
-				currentCFrame
-			)
+			spark:PivotTo(currentCFrame)
 		end)
 
-		lastFirstPersonRecoveryTime =
-			os.clock()
+		lastFirstPersonRecoveryTime = os.clock()
 
 		firstPersonRecoveryActive = false
 	end)
@@ -2350,9 +1707,6 @@ end
 -- Spark's neutral presentation is right-side only so his trail never sweeps
 -- across the left side of the player's view.
 
-
-
-
 ----------------------------------------------------------------
 -- IDLE VISUAL STATE
 --
@@ -2362,14 +1716,11 @@ end
 ----------------------------------------------------------------
 
 local function isPlayerActivelyMoving(): boolean
-	if humanoid.MoveDirection.Magnitude
-		> SPARK_IDLE_MOVE_DIRECTION_THRESHOLD
-	then
+	if humanoid.MoveDirection.Magnitude > SPARK_IDLE_MOVE_DIRECTION_THRESHOLD then
 		return true
 	end
 
-	local humanoidState =
-		humanoid:GetState()
+	local humanoidState = humanoid:GetState()
 
 	return humanoidState == Enum.HumanoidStateType.Jumping
 		or humanoidState == Enum.HumanoidStateType.Freefall
@@ -2377,10 +1728,7 @@ local function isPlayerActivelyMoving(): boolean
 		or isCharacterClimbing()
 end
 
-local function updateSparkIdleVisualState(
-	cameraAngularSpeedDegrees: number,
-	cameraZoomSpeed: number
-)
+local function updateSparkIdleVisualState(cameraAngularSpeedDegrees: number, cameraZoomSpeed: number)
 	local now = os.clock()
 
 	-- Do not let the hidden gameplay clone begin an idle cycle behind the
@@ -2390,34 +1738,23 @@ local function updateSparkIdleVisualState(
 		return
 	end
 
-	local playerIsMoving =
-		isPlayerActivelyMoving()
+	local playerIsMoving = isPlayerActivelyMoving()
 
-	local cameraIsMoving =
-		cameraAngularSpeedDegrees
-		>= SPARK_IDLE_CAMERA_ANGULAR_SPEED_THRESHOLD
-		or cameraZoomSpeed
-		>= SPARK_IDLE_CAMERA_ZOOM_SPEED_THRESHOLD
+	local cameraIsMoving = cameraAngularSpeedDegrees >= SPARK_IDLE_CAMERA_ANGULAR_SPEED_THRESHOLD
+		or cameraZoomSpeed >= SPARK_IDLE_CAMERA_ZOOM_SPEED_THRESHOLD
 
-	local idleVisualsSuppressed =
-		focusedModel ~= nil
-		or isCharacterClimbing()
+	local idleVisualsSuppressed = focusedModel ~= nil or isCharacterClimbing()
 
 	-- ILLUMINATE MODE:
 	-- Any character movement OR deliberate camera movement immediately returns
 	-- Spark to his canonical gold light/helper form and restarts the idle timer.
-	if playerIsMoving
-		or cameraIsMoving
-		or idleVisualsSuppressed
-	then
+	if playerIsMoving or cameraIsMoving or idleVisualsSuppressed then
 		sparkPersonality.LastPlayerMovementTime = now
 
 		if sparkPersonality.IdleVisualsActive then
 			sparkPersonality.IdleVisualsActive = false
 
-			sparkVisuals:StopIdleVisuals(
-				SPARK_IDLE_RETURN_DURATION
-			)
+			sparkVisuals:StopIdleVisuals(SPARK_IDLE_RETURN_DURATION)
 		end
 
 		return
@@ -2427,9 +1764,9 @@ local function updateSparkIdleVisualState(
 		return
 	end
 
-	if not sparkPersonality.IdleVisualsActive
-		and now - sparkPersonality.LastPlayerMovementTime
-		>= SPARK_IDLE_VISUAL_DELAY
+	if
+		not sparkPersonality.IdleVisualsActive
+		and now - sparkPersonality.LastPlayerMovementTime >= SPARK_IDLE_VISUAL_DELAY
 	then
 		sparkPersonality.IdleVisualsActive = true
 
@@ -2440,6 +1777,50 @@ end
 ----------------------------------------------------------------
 -- UPDATE
 ----------------------------------------------------------------
+
+local function getRenderedSparkCFrame(
+	solvedCFrame: CFrame,
+	targetCFrame: CFrame,
+	previousPosition: Vector3,
+	dt: number
+): CFrame
+	local camera = workspace.CurrentCamera
+
+	if not camera or not isFirstPerson or zoomedOutShoulderMode or isCharacterClimbing() or focusedModel ~= nil then
+		FirstPersonReturnFacing.Flipped = false
+		return solvedCFrame
+	end
+
+	local movementVector = solvedCFrame.Position - previousPosition
+	local movementSpeed = if dt > 0 then movementVector.Magnitude / dt else 0
+	local catchupDistance = (targetCFrame.Position - solvedCFrame.Position).Magnitude
+
+	if
+		movementSpeed < FirstPersonReturnFacing.MinimumMovementSpeed
+		or movementVector.Magnitude <= 0.0001
+		or catchupDistance < FirstPersonReturnFacing.MinimumCatchupDistance
+	then
+		FirstPersonReturnFacing.Flipped = false
+		return CFrame.new(solvedCFrame.Position) * camera.CFrame.Rotation
+	end
+
+	local cameraForwardDot = movementVector.Unit:Dot(camera.CFrame.LookVector)
+
+	if FirstPersonReturnFacing.Flipped then
+		if cameraForwardDot >= FirstPersonReturnFacing.ExitDot then
+			FirstPersonReturnFacing.Flipped = false
+		end
+	elseif cameraForwardDot <= FirstPersonReturnFacing.EnterDot then
+		FirstPersonReturnFacing.Flipped = true
+	end
+
+	local renderedRotation = camera.CFrame.Rotation
+	if FirstPersonReturnFacing.Flipped then
+		renderedRotation *= CFrame.Angles(0, math.rad(180), 0)
+	end
+
+	return CFrame.new(solvedCFrame.Position) * renderedRotation
+end
 
 local function onUpdate(dt: number)
 	if not spark.Parent then
@@ -2454,9 +1835,7 @@ local function onUpdate(dt: number)
 
 	-- Measure what the beta controller actually did in world-space this frame.
 	-- Observer-idle detection and vertical catch-up use this instead of input.
-	updateCharacterWorldMotion(
-		dt
-	)
+	updateCharacterWorldMotion(dt)
 
 	-- CODEX_STATE_MARKER: STATE_DRIVEN_UPDATE
 	-- Locomotion state should affect target selection, not duplicate
@@ -2469,32 +1848,17 @@ local function onUpdate(dt: number)
 		climbStateChanged = false
 	end
 
-	local cameraDistance =
-		getCameraDistanceFromCharacter()
+	local cameraDistance = getCameraDistanceFromCharacter()
 
-	updateFirstPersonPhysicalMode(
-		cameraDistance
-	)
+	updateFirstPersonPhysicalMode(cameraDistance)
 
-	local zoomedOutShoulderModeChanged =
-		updateZoomedOutShoulderMode(
-			cameraDistance
-		)
+	local zoomedOutShoulderModeChanged = updateZoomedOutShoulderMode(cameraDistance)
 
-	local closeShoulderModeChanged =
-		updateCloseShoulderMode(
-			cameraDistance
-		)
+	local closeShoulderModeChanged = updateCloseShoulderMode(cameraDistance)
 
-	local climbObserverModeChanged =
-		updateClimbObserverMode(
-			cameraDistance
-		)
+	local climbObserverModeChanged = updateClimbObserverMode(cameraDistance)
 
-	if zoomedOutShoulderModeChanged
-		or closeShoulderModeChanged
-		or climbObserverModeChanged
-	then
+	if zoomedOutShoulderModeChanged or closeShoulderModeChanged or climbObserverModeChanged then
 		-- Kill only the old target's momentum. SmoothDamp still flies from Spark's
 		-- current CFrame to the newly selected target; this is not a teleport.
 		smoothVelocity = CFrame.new()
@@ -2502,55 +1866,34 @@ local function onUpdate(dt: number)
 
 	local targetCFrame = getTargetCFrame()
 
-	local cameraAngularSpeedDegrees =
-		getCameraAngularSpeedDegrees(dt)
+	local cameraAngularSpeedDegrees = getCameraAngularSpeedDegrees(dt)
 
-	local targetLateralSpeed =
-		getTargetLateralSpeed(
-			targetCFrame,
-			dt
-		)
+	local targetLateralSpeed = getTargetLateralSpeed(targetCFrame, dt)
 
-	local cameraZoomSpeed =
-		getCameraZoomSpeed(
-			cameraDistance,
-			dt
-		)
+	local cameraZoomSpeed = getCameraZoomSpeed(cameraDistance, dt)
 
-	updateSparkIdleVisualState(
+	updateSparkIdleVisualState(cameraAngularSpeedDegrees, cameraZoomSpeed)
+
+	local currentSmoothTime = getCurrentSmoothTime(
+		currentCFrame,
+		targetCFrame,
 		cameraAngularSpeedDegrees,
+		targetLateralSpeed,
 		cameraZoomSpeed
 	)
-
-	local currentSmoothTime =
-		getCurrentSmoothTime(
-			currentCFrame,
-			targetCFrame,
-			cameraAngularSpeedDegrees,
-			targetLateralSpeed,
-			cameraZoomSpeed
-		)
 
 	------------------------------------------------------------
 	-- REMEMBER WHERE SPARK WAS
 	------------------------------------------------------------
 
-	local previousPosition =
-		currentCFrame.Position
+	local previousPosition = currentCFrame.Position
 
 	------------------------------------------------------------
 	-- SMOOTH FOLLOWING
 	------------------------------------------------------------
 
 	currentCFrame, smoothVelocity =
-		TweenService:SmoothDamp(
-			currentCFrame,
-			targetCFrame,
-			smoothVelocity,
-			currentSmoothTime,
-			MAX_SPEED,
-			dt
-		)
+		TweenService:SmoothDamp(currentCFrame, targetCFrame, smoothVelocity, currentSmoothTime, MAX_SPEED, dt)
 
 	------------------------------------------------------------
 	-- CATCH-UP CAMERA ORIENTATION
@@ -2569,8 +1912,7 @@ local function onUpdate(dt: number)
 	-- SmoothDamp result above.
 	------------------------------------------------------------
 
-	local camera =
-		workspace.CurrentCamera
+	local camera = workspace.CurrentCamera
 
 	------------------------------------------------------------
 	-- CLIMB OBSERVER ENTRY ORIENTATION
@@ -2586,192 +1928,86 @@ local function onUpdate(dt: number)
 	-- POSITION IS NOT CHANGED HERE.
 	------------------------------------------------------------
 
-	if camera
-		and climbObserverMode
-	then
-		local observerEntryElapsed =
-			os.clock()
-		- lastClimbObserverModeChangeTime
+	if camera and climbObserverMode then
+		local observerEntryElapsed = os.clock() - lastClimbObserverModeChangeTime
 
-		if observerEntryElapsed
-			< CLIMB_OBSERVER_ENTRY_SMOOTH_DURATION
-		then
-			local observerEntryAlpha =
-				math.clamp(
-					observerEntryElapsed
-					/ CLIMB_OBSERVER_ENTRY_SMOOTH_DURATION,
-					0,
-					1
-				)
+		if observerEntryElapsed < CLIMB_OBSERVER_ENTRY_SMOOTH_DURATION then
+			local observerEntryAlpha = math.clamp(observerEntryElapsed / CLIMB_OBSERVER_ENTRY_SMOOTH_DURATION, 0, 1)
 
 			local cameraFacingCFrame =
-				CFrame.lookAt(
-					currentCFrame.Position,
-					camera.CFrame.Position,
-					camera.CFrame.UpVector
-				)
+				CFrame.lookAt(currentCFrame.Position, camera.CFrame.Position, camera.CFrame.UpVector)
 
 			-- Face the camera through most of the travel, then gently
 			-- hand rotation back to the final top-right observer pose.
-			local observerRotationReturnAlpha =
-				math.clamp(
-					(observerEntryAlpha - 0.68)
-					/ 0.32,
-					0,
-					1
-				)
+			local observerRotationReturnAlpha = math.clamp((observerEntryAlpha - 0.68) / 0.32, 0, 1)
 
-			local finalObserverRotationCFrame =
-				CFrame.new(
-					currentCFrame.Position
-				)
-				* targetCFrame.Rotation
+			local finalObserverRotationCFrame = CFrame.new(currentCFrame.Position) * targetCFrame.Rotation
 
 			local observerPresentationCFrame =
-				cameraFacingCFrame:Lerp(
-					finalObserverRotationCFrame,
-					observerRotationReturnAlpha
-				)
+				cameraFacingCFrame:Lerp(finalObserverRotationCFrame, observerRotationReturnAlpha)
 
-			local observerOrientationResponse =
-				1
-			- math.exp(
-				-10 * dt
-			)
+			local observerOrientationResponse = 1 - math.exp(-10 * dt)
 
-			currentCFrame =
-				currentCFrame:Lerp(
-					observerPresentationCFrame,
-					observerOrientationResponse
-				)
+			currentCFrame = currentCFrame:Lerp(observerPresentationCFrame, observerOrientationResponse)
 		end
 	end
 
-	if camera
-		and not focusedModel
-		and not climbObserverMode
-		and currentSmoothTime < SMOOTH_TIME
-	then
-		local cameraZoomIsFirstPerson =
-			isCameraActuallyFirstPerson(
-				cameraDistance
-			)
+	if camera and not focusedModel and not climbObserverMode and currentSmoothTime < SMOOTH_TIME then
+		local cameraZoomIsFirstPerson = isCameraActuallyFirstPerson(cameraDistance)
 
-		local cameraZoomIsClose =
-			closeShoulderMode
+		local cameraZoomIsClose = closeShoulderMode
 
-		local cameraZoomIsOrdinaryFree =
-			cameraDistance
-			> CLOSE_SHOULDER_MAX_DISTANCE
-			and cameraDistance
-			<= FREE_CAMERA_MAX_DISTANCE
+		local cameraZoomIsOrdinaryFree = cameraDistance > CLOSE_SHOULDER_MAX_DISTANCE
+			and cameraDistance <= FREE_CAMERA_MAX_DISTANCE
 
-		local distanceFromCurrentTarget =
-			(
-				currentCFrame.Position
-				- targetCFrame.Position
-			).Magnitude
+		local distanceFromCurrentTarget = (currentCFrame.Position - targetCFrame.Position).Magnitude
 
-		local sparkIsMeaningfullyCatchingUp =
-			distanceFromCurrentTarget
-			>= TARGET_DISTANCE_RESPONSE_START
+		local sparkIsMeaningfullyCatchingUp = distanceFromCurrentTarget >= TARGET_DISTANCE_RESPONSE_START
 
-		local sparkIsInFrontOfPlayer =
-			(
-				currentCFrame.Position
-				- rootPart.Position
-			):Dot(
-			rootPart.CFrame.LookVector
-		) > 0
+		local sparkIsInFrontOfPlayer = (currentCFrame.Position - rootPart.Position):Dot(rootPart.CFrame.LookVector) > 0
 
-		local freeCameraAllowsOrientation =
-			cameraZoomIsOrdinaryFree
-			and (
-				sparkIsMeaningfullyCatchingUp
-				or sparkIsInFrontOfPlayer
-			)
+		local freeCameraAllowsOrientation = cameraZoomIsOrdinaryFree
+			and (sparkIsMeaningfullyCatchingUp or sparkIsInFrontOfPlayer)
 
-		local shouldCameraAlignCatchUp =
-			cameraZoomIsFirstPerson
-			or cameraZoomIsClose
-			or freeCameraAllowsOrientation
+		local shouldCameraAlignCatchUp = cameraZoomIsFirstPerson or cameraZoomIsClose or freeCameraAllowsOrientation
 
 		if shouldCameraAlignCatchUp then
 			local catchUpStrength =
-				math.clamp(
-					(
-						SMOOTH_TIME
-						- currentSmoothTime
-					)
-					/ (
-						SMOOTH_TIME
-						- FAST_CAMERA_SMOOTH_TIME
-					),
-					0,
-					1
-				)
+				math.clamp((SMOOTH_TIME - currentSmoothTime) / (SMOOTH_TIME - FAST_CAMERA_SMOOTH_TIME), 0, 1)
 
-			local cameraOrientationAlpha =
-				(
-					1
-					- math.exp(
-						-12 * dt
-					)
-				)
-				* catchUpStrength
+			local cameraOrientationAlpha = (1 - math.exp(-12 * dt)) * catchUpStrength
 
-			local cameraAlignedCFrame =
-				CFrame.new(
-					currentCFrame.Position
-				)
-				* camera.CFrame.Rotation
+			local cameraAlignedCFrame = CFrame.new(currentCFrame.Position) * camera.CFrame.Rotation
 
-			currentCFrame =
-				currentCFrame:Lerp(
-					cameraAlignedCFrame,
-					cameraOrientationAlpha
-				)
+			currentCFrame = currentCFrame:Lerp(cameraAlignedCFrame, cameraOrientationAlpha)
 		end
 	end
 
-	currentCFrame =
-		resolveFirstPersonPhysicalMovement(
-			previousPosition,
-			currentCFrame
-		)
+	currentCFrame = resolveFirstPersonPhysicalMovement(previousPosition, currentCFrame)
 
-	spark:PivotTo(currentCFrame)
+	local sparkRenderedCFrame = getRenderedSparkCFrame(currentCFrame, targetCFrame, previousPosition, dt)
+
+	spark:PivotTo(sparkRenderedCFrame)
 
 	------------------------------------------------------------
 	-- TRUE FIRST-PERSON RECOVERY TELEPORT
 	------------------------------------------------------------
 
-	if firstPersonPhysicalModeActive
+	if
+		firstPersonPhysicalModeActive
 		and sparkGameplayVisible
 		and not focusedModel
 		and not climbObserverMode
 		and not firstPersonRecoveryActive
 		and not sparkVisuals.SoulBurstInProgress
-		and os.clock()
-		- lastFirstPersonRecoveryTime
-			>= FIRST_PERSON_RECOVERY_COOLDOWN
+		and os.clock() - lastFirstPersonRecoveryTime >= FIRST_PERSON_RECOVERY_COOLDOWN
 	then
-		local distanceFromIntendedHome =
-			(
-				currentCFrame.Position
-				- targetCFrame.Position
-			).Magnitude
+		local distanceFromIntendedHome = (currentCFrame.Position - targetCFrame.Position).Magnitude
 
-		if distanceFromIntendedHome
-			>= FIRST_PERSON_RECOVERY_DISTANCE
-		then
+		if distanceFromIntendedHome >= FIRST_PERSON_RECOVERY_DISTANCE then
 			if firstPersonRecoveryFarSince == nil then
-				firstPersonRecoveryFarSince =
-					os.clock()
-			elseif os.clock()
-				- firstPersonRecoveryFarSince
-					>= FIRST_PERSON_RECOVERY_HOLD_TIME
-			then
+				firstPersonRecoveryFarSince = os.clock()
+			elseif os.clock() - firstPersonRecoveryFarSince >= FIRST_PERSON_RECOVERY_HOLD_TIME then
 				playFirstPersonRecoveryTeleport()
 			end
 		else
@@ -2788,30 +2024,21 @@ local function onUpdate(dt: number)
 	local movementSpeed = 0
 
 	if dt > 0 then
-		movementSpeed =
-			(
-				currentCFrame.Position
-				- previousPosition
-			).Magnitude / dt
+		movementSpeed = (currentCFrame.Position - previousPosition).Magnitude / dt
 	end
 
 	------------------------------------------------------------
 	-- TRAIL
 	------------------------------------------------------------
 
-	sparkVisuals:SetTrailEnabled(
-		sparkGameplayVisible
-			and movementSpeed
-			>= TRAIL_START_SPEED
-	)
+	sparkVisuals:SetTrailEnabled(sparkGameplayVisible and movementSpeed >= TRAIL_START_SPEED)
 end
 
 ----------------------------------------------------------------
 -- START
 ----------------------------------------------------------------
 
-local updateConnection =
-	RunService.PreRender:Connect(onUpdate)
+local updateConnection = RunService.PreRender:Connect(onUpdate)
 
 ----------------------------------------------------------------
 -- CLEANUP
@@ -2821,10 +2048,7 @@ script.Destroying:Connect(function()
 	sparkPersonality.Destroyed = true
 
 	if player.Character == character then
-		player:SetAttribute(
-			SPARK_GAMEPLAY_READY_ATTRIBUTE,
-			false
-		)
+		player:SetAttribute(SPARK_GAMEPLAY_READY_ATTRIBUTE, false)
 	end
 
 	if updateConnection then

@@ -1,0 +1,4 @@
+-- Retired prototype. Flotation now belongs to WaterInteractionController's
+-- six-sample Boat profile. This empty LocalScript deliberately replaces any
+-- older Studio copy through Rojo, including projects ignoring unknown instances.
+-- Previous source: docs/reference/BoatMovementController.previous.luau.

@@ -1,0 +1,364 @@
+--!strict
+
+-- Owns only the parked/physical handoff. Water sampling stays on the driver
+-- inside WaterInteractionController; helm and character presentation stay separate.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
+local WaterConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("WaterConfig"))
+local BoatRuntimeDebug = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("BoatRuntimeDebug"))
+
+local remote = ReplicatedStorage:FindFirstChild("BoatDynamicReady")
+if not remote then
+	remote = Instance.new("RemoteEvent")
+	remote.Name = "BoatDynamicReady"
+	remote.Parent = ReplicatedStorage
+end
+assert(remote:IsA("RemoteEvent"), "ReplicatedStorage.BoatDynamicReady must be a RemoteEvent")
+local readyRemote = remote :: RemoteEvent
+
+type State = {
+	boat: Model,
+	root: BasePart?,
+	seat: VehicleSeat?,
+	driver: Player?,
+	occupant: Humanoid?,
+	originalAnchored: { [BasePart]: boolean },
+	session: number,
+	active: boolean,
+	lastAlive: number,
+	lastSafePivot: CFrame?,
+	failedOccupant: Humanoid?,
+	releaseStarted: number?,
+	repairOwnership: boolean,
+	anchorConnections: { [BasePart]: RBXScriptConnection },
+	warnedAnchors: { [BasePart]: boolean },
+}
+local states: { [Model]: State } = {}
+local Authority = {}
+local activationMessages: { [Model]: string } = setmetatable({}, { __mode = "k" }) :: any
+
+local function activationLog(boat: Model, message: string, enumerate: boolean?)
+	boat:SetAttribute("BoatPhysicsLastTransitionReason", message)
+	if not RunService:IsStudio() or activationMessages[boat] == message then return end
+	activationMessages[boat] = message
+	local root = boat:FindFirstChild("BoatRoot", true)
+	print(string.format("[BoatActivation] %s | %s | root=%s anchored=%s mass=%s",
+		boat:GetFullName(), message,
+		if root then root:GetFullName() else "MISSING",
+		if root and root:IsA("BasePart") then tostring(root.Anchored) else "n/a",
+		if root and root:IsA("BasePart") then tostring(root.AssemblyMass) else "n/a"))
+	if enumerate then
+		for _, part in boat:GetDescendants() do
+			if part:IsA("BasePart") and part.Anchored then
+				warn("[BoatDebug] ANCHORED BOAT DESCENDANT: " .. part:GetFullName())
+			end
+		end
+	end
+end
+
+local function optInFailure(boat: Model): string?
+	local folder = workspace:FindFirstChild("Boats")
+	if not folder or boat.Parent ~= folder then return "not a live direct child of Workspace.Boats" end
+	if not CollectionService:HasTag(boat, "WaterInteractable") then return "missing WaterInteractable tag" end
+	if boat:GetAttribute("WaterProfile") ~= "Boat" then return "WaterProfile must be Boat" end
+	if boat:GetAttribute("WaterDynamicPhysics") ~= true then return "WaterDynamicPhysics is not true" end
+	if boat:GetAttribute("WaterEnabled") == false then return "WaterEnabled is false" end
+	return nil
+end
+
+local function optedIn(boat: Model): boolean
+	return optInFailure(boat) == nil
+end
+
+local function setMode(state: State, mode: string)
+	local previous = state.boat:GetAttribute("BoatPhysicsMode")
+	if previous ~= mode then
+		state.boat:SetAttribute("BoatPhysicsMode", mode)
+		print(string.format("[BoatPhysics] %s: %s -> %s", state.boat:GetFullName(), tostring(previous), mode))
+	end
+end
+
+local function captureParts(state: State)
+	for _, part in state.boat:GetDescendants() do
+		if part:IsA("BasePart") and state.originalAnchored[part] == nil then
+			state.originalAnchored[part] = part.Anchored
+			state.anchorConnections[part] = part:GetPropertyChangedSignal("Anchored"):Connect(function()
+				if part.Anchored and part:IsDescendantOf(state.boat)
+					and (state.active or state.releaseStarted ~= nil) then
+					if not state.warnedAnchors[part] then
+						state.warnedAnchors[part] = true
+						warn("[BoatDebug] ANCHORED CONNECTED PART: " .. part:GetFullName() .. " (active vessel; releasing anchor)")
+					end
+					part.Anchored = false
+					state.repairOwnership = true
+				end
+			end)
+		end
+	end
+end
+
+local function disconnectAnchors(state: State)
+	for _, connection in state.anchorConnections do connection:Disconnect() end
+	table.clear(state.anchorConnections)
+end
+
+local function releaseParts(state: State)
+	-- Include structure added since preparation, without touching connected
+	-- characters or world geometry outside this boat Model.
+	captureParts(state)
+	for part in state.originalAnchored do
+		if part:IsDescendantOf(state.boat) and part.Anchored then
+			part.Anchored = false
+			if state.active then state.repairOwnership = true end
+		end
+	end
+end
+
+local function assertReleased(root: BasePart)
+	assert(not root.Anchored, "BoatRoot remains anchored")
+	for _, part in root:GetConnectedParts(true) do
+		assert(not part.Anchored, "anchored connected part: " .. part:GetFullName())
+	end
+	assert(root.AssemblyMass > 0 and root.AssemblyMass < math.huge, "BoatRoot assembly mass is not finite")
+end
+
+local function park(state: State, failure: string?)
+	-- End dynamic ownership BEFORE restoring saved anchors, so anchor guards
+	-- cannot mistake an intentional exit/recovery for an external re-anchor.
+	state.active = false
+	state.releaseStarted = nil
+	state.repairOwnership = false
+	-- Revoke ownership before anchoring. Preserve the helm's original free
+	-- parts; anchoring only the hull also safely covers initially unanchored rigs.
+	local root = state.root
+	if root and root.Parent and root.Position.Y < WaterConfig.GetSurfaceY() - 40 then
+		failure = failure or "boat below safety threshold on exit"
+	end
+	state.boat:SetAttribute("BoatPhysicsLastTransitionReason", failure or "parked: no validated dynamic driver")
+	activationLog(state.boat, failure or "PARK: no validated dynamic driver")
+	if root and root.Parent and not root.Anchored then
+		pcall(function()
+			(root.AssemblyRootPart or root):SetNetworkOwner(nil)
+		end)
+	end
+	for part, anchored in state.originalAnchored do
+		if part:IsDescendantOf(state.boat) then
+			part.AssemblyLinearVelocity = Vector3.zero
+			part.AssemblyAngularVelocity = Vector3.zero
+			part.Anchored = anchored
+		end
+	end
+	if root and root.Parent then
+		root.Anchored = true
+	end
+	state.active = false
+	state.boat:SetAttribute("BoatDynamicDriverUserId", nil)
+	if failure then
+		state.failedOccupant = state.occupant
+		if state.lastSafePivot then
+			state.boat:PivotTo(state.lastSafePivot)
+		end
+		warn("[BoatPhysics][RECOVERY] " .. state.boat:GetFullName() .. ": " .. failure)
+		setMode(state, "RECOVERING")
+	else
+		setMode(state, "KINEMATIC_IDLE")
+	end
+end
+
+function Authority.Refresh(boat: Model)
+	local state = states[boat]
+	local rootCandidate = boat:FindFirstChild("BoatRoot", true)
+	local seatCandidate = boat:FindFirstChild("BoatSeat", true)
+	local root = if rootCandidate and rootCandidate:IsA("BasePart") then rootCandidate else nil
+	local seat = if seatCandidate and seatCandidate:IsA("VehicleSeat") then seatCandidate else nil
+	local blocked = optInFailure(boat)
+	if blocked or not root or not seat then
+		if state then
+			park(state, if state.active then "dynamic opt-in, BoatRoot or BoatSeat removed" else nil)
+			disconnectAnchors(state)
+			states[boat] = nil
+		end
+		activationLog(boat, "BLOCKED: " .. (blocked or (if not root then "BoatRoot BasePart/MeshPart missing" else "BoatSeat VehicleSeat missing")))
+		return
+	end
+	if not state then
+		state = {
+			boat = boat, root = root, seat = seat, driver = nil, occupant = nil,
+			originalAnchored = {}, session = 0, active = false, lastAlive = 0,
+			lastSafePivot = nil, failedOccupant = nil,
+			releaseStarted = nil, repairOwnership = false, anchorConnections = {}, warnedAnchors = {},
+		}
+		states[boat] = state
+		captureParts(state)
+		park(state)
+	end
+	if state.root ~= root or state.seat ~= seat then
+		park(state, "BoatRoot or BoatSeat changed during handoff")
+		state.root = root
+		state.seat = seat
+		root.Anchored = true
+	end
+	local occupant = seat.Occupant
+	local character = if occupant then occupant.Parent else nil
+	local driver = if character and character:IsA("Model") then Players:GetPlayerFromCharacter(character) else nil
+	if occupant and (occupant.Health <= 0 or occupant.SeatPart ~= seat) then
+		driver = nil
+	end
+	if state.occupant == occupant and state.driver == driver then
+		if state.active or state.releaseStarted then releaseParts(state) end
+		if not state.active and not state.releaseStarted and driver and not state.failedOccupant then
+			activationLog(boat, "WAITING: valid BoatSeat driver, client Ready not received")
+		elseif not state.active and not state.releaseStarted and not driver then
+			activationLog(boat, if occupant then "WAITING: occupant is not a living player with SeatPart == BoatSeat" else "WAITING: BoatSeat has no occupant")
+		end
+		return
+	end
+	park(state)
+	state.session += 1
+	state.boat:SetAttribute("BoatDynamicSession", state.session)
+	state.occupant = occupant
+	state.driver = driver
+	state.failedOccupant = nil
+	if driver then
+		captureParts(state)
+		state.lastSafePivot = boat:GetPivot()
+		activationLog(boat, "WAITING: valid BoatSeat driver, client Ready not received")
+		setMode(state, "DYNAMIC_PREPARING")
+	end
+end
+
+function Authority.Remove(boat: Model)
+	local state = states[boat]
+	if state then
+		park(state)
+		disconnectAnchors(state)
+		states[boat] = nil
+	end
+end
+
+readyRemote.OnServerEvent:Connect(function(player: Player, boat: Instance, session: number, action: string)
+	if typeof(boat) ~= "Instance" or not boat:IsA("Model") or not optedIn(boat) then
+		return
+	end
+	local state = states[boat]
+	if not state or state.session ~= session or state.driver ~= player then
+		if action == "Ready" then activationLog(boat, "READY REJECTED: session or validated driver does not match") end
+		return
+	end
+	local root, seat = state.root, state.seat
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	if not root or not seat or not humanoid or humanoid.Health <= 0
+		or seat.Occupant ~= humanoid or humanoid.SeatPart ~= seat
+		or state.failedOccupant == humanoid then
+		if action == "Ready" then activationLog(boat, "READY REJECTED: seat/root/humanoid validation failed or session is recovering") end
+		return
+	end
+	if action == "Stop" then
+		park(state, "driver reported dynamic helper/sample failure")
+		return
+	end
+	if state.active then
+		if action == "Alive" then
+			state.lastAlive = os.clock()
+		end
+		return
+	end
+	if state.releaseStarted then return end
+	if action ~= "Ready" or boat:GetAttribute("BoatPhysicsMode") ~= "DYNAMIC_PREPARING" then
+		return
+	end
+	-- Ready is a notification, never permission to nominate another root/owner.
+	state.lastSafePivot = boat:GetPivot()
+	state.releaseStarted = os.clock()
+	activationLog(boat, "BEFORE UNANCHOR: Ready accepted for live boat", true)
+	releaseParts(state)
+	activationLog(boat, "AFTER UNANCHOR: all live boat BaseParts visited; awaiting assembly update", true)
+end)
+
+local function completeRelease(state: State)
+	local root, seat, player = state.root, state.seat, state.driver
+	if not root or not seat or not player then return end
+	local ok, err = pcall(function()
+		assertReleased(root)
+		local assembly = root.AssemblyRootPart or root
+		assert(seat.AssemblyRootPart == assembly, "BoatSeat is not rigidly connected to BoatRoot")
+		local canSet, reason = assembly:CanSetNetworkOwnership()
+		assert(canSet, reason)
+		assembly:SetNetworkOwner(player)
+		assert(assembly:GetNetworkOwner() == player, "driver ownership did not apply")
+	end)
+	if not ok then
+		-- Anchored assemblies can report their old roots/mass until physics has
+		-- rebuilt the graph. Retry only within this validated readiness session.
+		if state.releaseStarted and os.clock() - state.releaseStarted < 0.5 then return end
+		if RunService:IsStudio() then BoatRuntimeDebug.Inspect(state.boat) end
+		park(state, "ownership handoff failed: " .. tostring(err))
+		return
+	end
+	state.active = true
+	state.releaseStarted = nil
+	state.repairOwnership = false
+	state.lastAlive = os.clock()
+	state.boat:SetAttribute("BoatDynamicDriverUserId", player.UserId)
+	activationLog(state.boat, "ACTIVE: connected parts unanchored, finite mass, driver owns assembly", true)
+	setMode(state, "DYNAMIC_DRIVING")
+	if RunService:IsStudio() and state.boat:GetAttribute("BoatPhysicsDebug") == true then BoatRuntimeDebug.Inspect(state.boat) end
+end
+
+local elapsed = 0
+RunService.Heartbeat:Connect(function(dt)
+	-- Finish release after physics has had a step to rebuild the assembly.
+	for boat, state in states do
+		if state.releaseStarted then
+			Authority.Refresh(boat)
+			if state.releaseStarted then completeRelease(state) end
+		end
+	end
+	elapsed += dt
+	if elapsed < 0.1 then return end
+	elapsed = 0
+	for boat, state in states do
+		Authority.Refresh(boat)
+		if not state.active then continue end
+		local root = state.root
+		if not root then continue end
+		local y = root.Position.Y
+		if y ~= y or y < WaterConfig.GetSurfaceY() - 40 then
+			park(state, "boat dropped below safety threshold")
+		elseif os.clock() - state.lastAlive > 3 then
+			park(state, "dynamic client heartbeat timed out")
+		else
+			local ok, err = pcall(function()
+				assertReleased(root)
+				local assembly = root.AssemblyRootPart or root
+				if state.repairOwnership then
+					assembly:SetNetworkOwner(state.driver)
+					state.repairOwnership = false
+				end
+				assert(assembly:GetNetworkOwner() == state.driver, "active boat lost driver network ownership")
+			end)
+			if not ok then
+				if RunService:IsStudio() then BoatRuntimeDebug.Inspect(boat) end
+				park(state, tostring(err))
+			end
+		end
+	end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	for _, state in states do
+		if state.driver == player then park(state, "driver left the server") end
+	end
+end)
+
+CollectionService:GetInstanceAddedSignal("WaterInteractable"):Connect(function(instance)
+	if instance:IsA("Model") then Authority.Refresh(instance) end
+end)
+CollectionService:GetInstanceRemovedSignal("WaterInteractable"):Connect(function(instance)
+	if instance:IsA("Model") then Authority.Remove(instance) end
+end)
+
+return Authority
