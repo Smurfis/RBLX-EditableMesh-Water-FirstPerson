@@ -33,6 +33,8 @@ type State = {
 	failedOccupant: Humanoid?,
 	releaseStarted: number?,
 	dismountPending: boolean,
+	pendingExitPlayer: Player?,
+	pendingExitHumanoid: Humanoid?,
 	repairOwnership: boolean,
 	anchorConnections: { [BasePart]: RBXScriptConnection },
 	warnedAnchors: { [BasePart]: boolean },
@@ -225,6 +227,65 @@ local function zeroBoatMotion(state: State)
 	end
 end
 
+local function queueDriverExit(state: State, player: Player?, humanoid: Humanoid?)
+	if not player or not humanoid or humanoid.Health <= 0 or player.Character ~= humanoid.Parent then return end
+	state.pendingExitPlayer = player
+	state.pendingExitHumanoid = humanoid
+end
+
+local function placePendingDriverExit(state: State)
+	local player = state.pendingExitPlayer
+	local humanoid = state.pendingExitHumanoid
+	if not player or not humanoid then return end
+	local character = player.Character
+	if not character or humanoid.Parent ~= character or humanoid.Health <= 0 then
+		state.pendingExitPlayer = nil
+		state.pendingExitHumanoid = nil
+		return
+	end
+	if state.boat:GetAttribute("BoatPhysicsMode") ~= "KINEMATIC_IDLE" then return end
+	local seat = state.seat
+	if not seat or not seat.Parent or seat.Occupant == humanoid or humanoid.SeatPart == seat then return end
+	local characterRoot = character:FindFirstChild("HumanoidRootPart")
+	if not characterRoot or not characterRoot:IsA("BasePart") then
+		state.pendingExitPlayer = nil
+		state.pendingExitHumanoid = nil
+		return
+	end
+
+	local rootPart = characterRoot :: BasePart
+	local verticalClearance = seat.Size.Y * 0.5 + math.max(0, humanoid.HipHeight)
+		+ rootPart.Size.Y * 0.5 + 0.5
+	local sideClearance = seat.Size.X * 0.5 + rootPart.Size.X * 0.5 + 0.35
+	local standingPosition = (seat.CFrame * CFrame.new(sideClearance, verticalClearance, 0)).Position
+	local seatForward = seat.CFrame.LookVector
+	local facing = Vector3.new(seatForward.X, 0, seatForward.Z)
+	if facing.Magnitude < 0.001 then
+		local currentForward = rootPart.CFrame.LookVector
+		facing = Vector3.new(currentForward.X, 0, currentForward.Z)
+	end
+	if facing.Magnitude < 0.001 then facing = Vector3.new(0, 0, -1) end
+
+	-- The seat weld is already gone. Clear jump/boat momentum on the character
+	-- assembly and place it beside the live seat without touching the boat.
+	humanoid.Sit = false
+	humanoid.Jump = false
+	rootPart.AssemblyLinearVelocity = Vector3.zero
+	rootPart.AssemblyAngularVelocity = Vector3.zero
+	rootPart.CFrame = CFrame.lookAt(standingPosition, standingPosition + facing.Unit, Vector3.yAxis)
+	rootPart.AssemblyLinearVelocity = Vector3.zero
+	rootPart.AssemblyAngularVelocity = Vector3.zero
+	humanoid.Sit = false
+	humanoid.Jump = false
+	print(string.format(
+		"[BoatExit] player=%s boat=%s seat=%s standingCFrame=%s physicsMode=%s",
+		player:GetFullName(), state.boat:GetFullName(), seat:GetFullName(), tostring(rootPart.CFrame),
+		tostring(state.boat:GetAttribute("BoatPhysicsMode"))
+	))
+	state.pendingExitPlayer = nil
+	state.pendingExitHumanoid = nil
+end
+
 local function park(state: State, failure: string?)
 	-- Tell the client to stop forces before ownership or anchoring changes.
 	-- BoatState changes only after the final resting transform is committed.
@@ -304,7 +365,8 @@ function Authority.Refresh(boat: Model)
 			boat = boat, root = root, seat = seat, driver = nil, occupant = nil,
 			originalAnchored = {}, session = 0, active = false, lastAlive = 0,
 			lastSafeTransform = nil, currentTransform = nil, failedOccupant = nil,
-			releaseStarted = nil, dismountPending = false, repairOwnership = false,
+			releaseStarted = nil, dismountPending = false,
+			pendingExitPlayer = nil, pendingExitHumanoid = nil, repairOwnership = false,
 			anchorConnections = {}, warnedAnchors = {},
 		}
 		states[boat] = state
@@ -332,6 +394,7 @@ function Authority.Refresh(boat: Model)
 	if occupant and (occupant.Health <= 0 or occupant.SeatPart ~= seat) then
 		driver = nil
 	end
+	placePendingDriverExit(state)
 	if state.dismountPending then
 		if state.occupant == occupant and state.driver == driver then
 			-- The explicit handback already parked the boat. Wait for the server's
@@ -353,6 +416,7 @@ function Authority.Refresh(boat: Model)
 		else
 			activationLog(boat, if occupant then "WAITING: occupant is not a living player with SeatPart == BoatSeat" else "WAITING: BoatSeat has no occupant")
 		end
+		placePendingDriverExit(state)
 		return
 	end
 	if state.occupant == occupant and state.driver == driver then
@@ -364,12 +428,18 @@ function Authority.Refresh(boat: Model)
 		end
 		return
 	end
+	local previousDriver = state.driver
+	local previousOccupant = state.occupant
+	if previousDriver and previousOccupant and (previousDriver ~= driver or previousOccupant ~= occupant) then
+		queueDriverExit(state, previousDriver, previousOccupant)
+	end
 	park(state)
 	state.session += 1
 	state.boat:SetAttribute("BoatDynamicSession", state.session)
 	state.occupant = occupant
 	state.driver = driver
 	state.failedOccupant = nil
+	placePendingDriverExit(state)
 	if driver then
 		captureParts(state)
 		state.lastSafeTransform = root.CFrame
@@ -404,8 +474,10 @@ readyRemote.OnServerEvent:Connect(function(player: Player, boat: Instance, sessi
 	if action == "Dismounting" or action == "Stop" then
 		local mode = boat:GetAttribute("BoatPhysicsMode")
 		if mode == "DYNAMIC_PREPARING" or mode == "DYNAMIC_DRIVING" or mode == "PARKING" then
+			if action == "Dismounting" then queueDriverExit(state, player, state.occupant) end
 			park(state)
 			state.dismountPending = true
+			placePendingDriverExit(state)
 		end
 		return
 	end

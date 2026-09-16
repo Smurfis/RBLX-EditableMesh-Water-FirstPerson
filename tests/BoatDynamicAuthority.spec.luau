@@ -12,10 +12,23 @@ local function signal()
 		Fire = function(_, ...) for _, entry in callbacks do if entry[2].Connected then entry[1](...) end end end,
 	}
 end
+local Vector3
+local CFrame
 local frames = {}
 frames.__index = frames
-function frames:Inverse() return self end
-function frames.__mul(left, _) return left end
+function frames:Inverse()
+	if self.Name then return self end
+	return CFrame.new(-self.Position.X, -self.Position.Y, -self.Position.Z)
+end
+function frames.__mul(left, right)
+	if left.Name then return left end
+	if right.Name then return left end
+	return CFrame.new(
+		left.Position.X + right.Position.X,
+		left.Position.Y + right.Position.Y,
+		left.Position.Z + right.Position.Z
+	)
+end
 local function cframe(name)
 	return setmetatable({ Name = name, __cframe = true }, frames)
 end
@@ -43,7 +56,7 @@ local function instance(class, name, parent)
 	function obj:GetPropertyChangedSignal(_) return self.anchorSignal end
 	function obj:GetConnectedParts(_) return self.connected or {} end
 	if parent then table.insert(parent.children, obj) end
-	function obj:IsA(wanted) return wanted == self.ClassName or (wanted == "BasePart" and (self.ClassName == "MeshPart" or self.ClassName == "VehicleSeat")) end
+	function obj:IsA(wanted) return wanted == self.ClassName or (wanted == "BasePart" and (self.ClassName == "Part" or self.ClassName == "MeshPart" or self.ClassName == "VehicleSeat")) end
 	function obj:IsDescendantOf(ancestor)
 		local cursor = self.Parent
 		while cursor do if cursor == ancestor then return true end cursor = cursor.Parent end
@@ -90,11 +103,30 @@ end
 local vectorMetatable = {}
 vectorMetatable.__index = function(vector, key)
 	if key == "Magnitude" then return math.sqrt(vector.X * vector.X + vector.Y * vector.Y + vector.Z * vector.Z) end
+	if key == "Unit" then return vector / vector.Magnitude end
 	return vectorMetatable[key]
 end
-local Vector3 = {}
+function vectorMetatable.__add(left, right) return Vector3.new(left.X + right.X, left.Y + right.Y, left.Z + right.Z) end
+function vectorMetatable.__mul(left, right)
+	if type(left) == "number" then left, right = right, left end
+	return Vector3.new(left.X * right, left.Y * right, left.Z * right)
+end
+function vectorMetatable.__div(left, right) return left * (1 / right) end
+Vector3 = {}
 function Vector3.new(x, y, z) return setmetatable({ X = x, Y = y, Z = z }, vectorMetatable) end
 Vector3.zero = Vector3.new(0, 0, 0)
+Vector3.yAxis = Vector3.new(0, 1, 0)
+CFrame = {}
+function CFrame.new(x, y, z)
+	return setmetatable({
+		Position = if type(x) == "table" then x else Vector3.new(x or 0, y or 0, z or 0),
+		LookVector = Vector3.new(0, 0, -1),
+		__cframe = true,
+	}, frames)
+end
+function CFrame.lookAt(position, target, _)
+	return setmetatable({ Position = position, LookVector = (target + position * -1).Unit, __cframe = true }, frames)
+end
 local clock = 0
 local os = { clock = function() return clock end }
 local warnings = {}
@@ -155,6 +187,7 @@ local function fixture()
 	function root:GetNetworkOwner() return self.owner end
 	local seat = instance("VehicleSeat", "BoatSeat", deck)
 	seat.AssemblyRootPart = root; seat.Anchored = false
+	seat.Size = Vector3.new(2, 1, 2); seat.CFrame = CFrame.new(50, 10, 20)
 	local wheel = instance("MeshPart", "Handle", deck)
 	wheel.Anchored = false
 	local rail = instance("MeshPart", "BoatRail", root)
@@ -175,12 +208,15 @@ local function fixture()
 	local player = instance("Player", "Driver")
 	player.UserId = 10; player.Character = character; character.player = player
 	local humanoid = instance("Humanoid", "Humanoid", character)
-	humanoid.Health = 100
+	humanoid.Health = 100; humanoid.HipHeight = 2; humanoid.Sit = true; humanoid.Jump = true
+	local characterRoot = instance("Part", "HumanoidRootPart", character)
+	characterRoot.Size = Vector3.new(2, 2, 1); characterRoot.CFrame = CFrame.new(0, 12, 0)
+	characterRoot.AssemblyLinearVelocity = Vector3.zero; characterRoot.AssemblyAngularVelocity = Vector3.zero
 	Authority.Refresh(boat)
-	return boat, root, seat, wheel, player, humanoid
+	return boat, root, seat, wheel, player, humanoid, characterRoot
 end
 
-local boat, root, seat, wheel, player, humanoid = fixture()
+local boat, root, seat, wheel, player, humanoid, characterRoot = fixture()
 assert(boat:GetAttribute("BoatPhysicsMode") == "KINEMATIC_IDLE" and root.Anchored)
 assert(boat:GetAttribute("BoatState") == "Docked")
 assert(boat:GetAttribute("CurrentTransform") == root.CFrame)
@@ -237,6 +273,12 @@ assert(boat:GetAttribute("BoatState") == "Docked")
 assert(boat:GetAttribute("CurrentTransform") == leftTransform, "dismount restored the activation transform")
 assert(root.AssemblyLinearVelocity.Magnitude == 0 and root.AssemblyAngularVelocity.Magnitude == 0, "BoatRoot retained sailing motion after parking")
 assert(wheel.AssemblyLinearVelocity.Magnitude == 0 and wheel.AssemblyAngularVelocity.Magnitude == 0, "separate boat part retained sailing motion after parking")
+assert(characterRoot.CFrame.Position.X == 0, "driver moved before server confirmed BoatSeat exit")
+-- Use the live seat pose at the moment server occupancy clears, proving the
+-- exit placement never consults spawn/activation transforms.
+seat.CFrame = CFrame.new(70, 18, -30)
+characterRoot.AssemblyLinearVelocity = Vector3.new(28, 13, -7)
+characterRoot.AssemblyAngularVelocity = Vector3.new(0.4, 1.2, -0.3)
 seat.Occupant = nil; humanoid.SeatPart = nil
 Authority.Refresh(boat)
 assert(#boat.modeHistory == transitionsBeforeDismount + 2, "seat replication parked the boat twice")
@@ -244,6 +286,13 @@ assert(root.Anchored and root.owner == nil and not wheel.Anchored)
 assert(boat:GetAttribute("BoatPhysicsMode") == "KINEMATIC_IDLE")
 assert(boat:GetAttribute("BoatState") == "Docked")
 assert(boat:GetAttribute("CurrentTransform") == leftTransform, "exit did not commit the physical transform")
+assert(root.CFrame == leftTransform, "driver exit placement changed the parked boat transform")
+assert(not humanoid.Sit, "driver remained seated after exit placement")
+assert(not humanoid.Jump, "driver retained the default dismount jump after exit placement")
+assert(math.abs(characterRoot.CFrame.Position.X - 72.35) < 1e-6, "driver exit did not use live BoatSeat side clearance")
+assert(math.abs(characterRoot.CFrame.Position.Y - 22) < 1e-6 and math.abs(characterRoot.CFrame.Position.Z + 30) < 1e-6, "driver exit height/position was not derived from live BoatSeat")
+assert(characterRoot.CFrame.LookVector.Z == -1, "driver exit did not preserve BoatSeat-facing direction")
+assert(characterRoot.AssemblyLinearVelocity.Magnitude == 0 and characterRoot.AssemblyAngularVelocity.Magnitude == 0, "driver inherited boat motion after exit placement")
 remote.OnServerEvent:Fire(player, boat, session, "Ready")
 assert(root.Anchored, "late ready after exit released boat")
 
@@ -307,4 +356,4 @@ assert(#warnings >= 6)
 Authority.Remove(other)
 otherRoot.Anchored = true
 assert(otherRoot.Anchored)
-_G.print("PASS: current-transform dismount, complete motion stop, ten mount cycles, and isolated timeout/abyss/ownership/helper/tag recovery")
+_G.print("PASS: current-transform dismount, live-seat driver exit placement, complete motion stop, ten mount cycles, and isolated recovery")

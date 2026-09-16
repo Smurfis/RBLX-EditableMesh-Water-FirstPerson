@@ -182,6 +182,12 @@ contract stays the simple `Docked` / `Sailing` distinction.
    `BoatState = "Docked"`; the client destroys its helpers and kinematic wave
    motion resumes at that X/Z and heading. Player logout uses this same
    current-location path. No recovery transform is consulted.
+   Once the server also confirms that the same validated humanoid has left the
+   exact `BoatSeat`, it places that driver's HumanoidRootPart upright beside the
+   seat using the seat's live world CFrame. The offset clears the seat both
+   vertically and laterally to avoid immediate touch reseating. Character
+   linear/angular velocity is zeroed and `Humanoid.Sit` is set false; no boat
+   property or transform is changed by this UX step.
 5. **Recovery:** a missing client heartbeat (3 seconds), ownership loss,
    helper failure or a fall 40 studs below the configured base surface parks
    the boat and restores its saved pre-release pivot. Re-entry is required
@@ -281,14 +287,15 @@ Automated tests execute actual controller/module source with mocked services:
 - nonzero forward, vertical and angular sailing motion is zero after parking on
   both server and former-driver client, including a separate boat assembly;
 - the platform rider ignores sailing/parking/recovery deltas and resumes parked
-  `BoatRoot` carry from a fresh `KINEMATIC_IDLE` baseline.
+  `BoatRoot` carry from a fresh `KINEMATIC_IDLE` baseline;
+- the validated driver is moved only after server-observed seat exit and
+  `KINEMATIC_IDLE`, using the live BoatSeat pose with zero inherited motion.
 
 Run `tests/RunBoatDynamicTests.ps1 -LuauPath <path-to-luau.exe>`.
 These are lifecycle/math tests, not a Roblox physics simulator.
 
-**Studio status:** the user reported the flotation milestone passed. New
-propulsion handling and continued helm/IK/wave behaviour while driving still
-need runtime verification; automated mocks cannot establish those results.
-Client ownership also retains
-Roblox's usual trust limitations; this prototype adds no authoritative racing,
-damage or progression decisions.
+**Studio status:** the user confirmed the complete SmallBoat lifecycle passes:
+mounting, sailing, helm/IK, parking at the sailed-to location, residual-motion
+cleanup, stable parked standing, re-entry and clean BoatSeat exit placement.
+Client ownership retains Roblox's usual trust limitations; this prototype adds
+no authoritative racing, damage or progression decisions.

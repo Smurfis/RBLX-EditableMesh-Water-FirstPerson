@@ -30,6 +30,8 @@ Completed the public Docked/Sailing lifecycle around the physical boat prototype
 * The former driver destroys all buoyancy, propulsion and orientation helpers on the server parking acknowledgement, then clears its local assembly motion. Parked kinematic writes also finish with zero assembly velocity so the anchored hull cannot behave like a conveyor.
 * Boat parking diagnostics report pre/post speed, linear/angular velocity, network owner, anchor state, occupant, lifecycle state, active movement constraints and moving helper/assembly parts.
 * `WaterPlatformRiderController` ignores dynamic boats during sailing, parking and recovery. It begins parked character carry from a fresh `BoatRoot` baseline only in `KINEMATIC_IDLE`, preventing a dismount frame from copying the boat's former sailing delta into the character.
+* After the server confirms the legitimate driver has left `BoatSeat` and parking has reached `KINEMATIC_IDLE`, the character is placed upright beside the live seat with safe vertical/side clearance. Character assembly velocity is cleared and `Humanoid.Sit` is forced off without changing the boat transform or lifecycle.
+* Studio validation passed for the complete mount, sail, park-at-current-location, stable parked deck, re-entry and clean BoatSeat exit loop while preserving helm/hand IK.
 
 ## v0.6.2-0-dev - 2026-09-15 - Boats | TIMESTAMP 21:08
 
