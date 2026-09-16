@@ -12,6 +12,14 @@ local function signal()
 		Fire = function(_, ...) for _, entry in callbacks do if entry[2].Connected then entry[1](...) end end end,
 	}
 end
+local frames = {}
+frames.__index = frames
+function frames:Inverse() return self end
+function frames.__mul(left, _) return left end
+local function cframe(name)
+	return setmetatable({ Name = name, __cframe = true }, frames)
+end
+
 local function instance(class, name, parent)
 	local obj = { ClassName = class, Name = name, Parent = parent, attributes = {}, children = {}, __instance = true }
 	obj.anchorSignal = signal()
@@ -68,7 +76,11 @@ local function instance(class, name, parent)
 	return obj
 end
 local builtinTypeof = typeof
-local function typeof(value) return if type(value) == "table" and value.__instance then "Instance" else builtinTypeof(value) end
+local function typeof(value)
+	if type(value) == "table" and value.__instance then return "Instance" end
+	if type(value) == "table" and value.__cframe then return "CFrame" end
+	return builtinTypeof(value)
+end
 local Vector3 = { zero = {} }
 local clock = 0
 local os = { clock = function() return clock end }
@@ -110,13 +122,18 @@ end)()
 local function fixture()
 	local boat = instance("Model", "SmallBoat", folder)
 	boat.tagged = true
-	boat.pivot = {}
+	boat.pivot = cframe("spawn")
 	boat:SetAttribute("WaterProfile", "Boat")
 	boat:SetAttribute("WaterDynamicPhysics", true)
 	local deck = instance("Model", "Deck", boat)
 	local root = instance("MeshPart", "BoatRoot", deck)
 	root.Position = { Y = 10 }; root.Anchored = true; root.AssemblyRootPart = root
+	root.CFrame = boat.pivot
 	root.owner = nil; root.ownershipCalls = 0
+	function boat:GetPivot() return root.CFrame end
+	function boat:PivotTo(pivot)
+		self.pivot = pivot; root.CFrame = pivot; self.restores = (self.restores or 0) + 1
+	end
 	function root:CanSetNetworkOwnership() return not self.Anchored, "anchored" end
 	function root:SetNetworkOwner(owner)
 		assert(not self.Anchored, "ownership API called while anchored")
@@ -146,6 +163,8 @@ end
 
 local boat, root, seat, wheel, player, humanoid = fixture()
 assert(boat:GetAttribute("BoatPhysicsMode") == "KINEMATIC_IDLE" and root.Anchored)
+assert(boat:GetAttribute("BoatState") == "Docked")
+assert(boat:GetAttribute("CurrentTransform") == root.CFrame)
 seat.Occupant = humanoid; humanoid.SeatPart = seat
 Authority.Refresh(boat)
 assert(root.Anchored and root.ownershipCalls == 0, "sitting must not release boat")
@@ -170,6 +189,7 @@ rail.Anchored = true
 assert(not rail.Anchored and root.AssemblyMass < math.huge)
 heartbeat:Fire(0.1)
 assert(root.owner == player and boat:GetAttribute("BoatPhysicsMode") == "DYNAMIC_DRIVING")
+assert(boat:GetAttribute("BoatState") == "Sailing")
 local late = instance("MeshPart", "LateStructure", root)
 late.Anchored = true; table.insert(root.connected, late)
 Authority.Refresh(boat); heartbeat:Fire(0.1)
@@ -180,10 +200,14 @@ assert(boat:GetAttribute("BoatPhysicsMode") == "DYNAMIC_DRIVING")
 local calls = root.ownershipCalls
 remote.OnServerEvent:Fire(player, boat, session, "Ready")
 assert(root.ownershipCalls == calls, "duplicate ready repeated release")
+local leftTransform = cframe("left-at-sea")
+root.CFrame = leftTransform
 seat.Occupant = nil; humanoid.SeatPart = nil
 Authority.Refresh(boat)
 assert(root.Anchored and root.owner == nil and not wheel.Anchored)
 assert(boat:GetAttribute("BoatPhysicsMode") == "KINEMATIC_IDLE")
+assert(boat:GetAttribute("BoatState") == "Docked")
+assert(boat:GetAttribute("CurrentTransform") == leftTransform, "exit did not commit the physical transform")
 remote.OnServerEvent:Fire(player, boat, session, "Ready")
 assert(root.Anchored, "late ready after exit released boat")
 
@@ -204,6 +228,13 @@ local function activate()
 	remote.OnServerEvent:Fire(player, boat, session, "Ready")
 	heartbeat:Fire(0.1)
 end
+activate()
+local logoutTransform = cframe("logout-at-sea")
+root.CFrame = logoutTransform
+players.PlayerRemoving:Fire(player)
+assert(root.Anchored and boat:GetAttribute("BoatState") == "Docked")
+assert(boat:GetAttribute("CurrentTransform") == logoutTransform, "logout restored the pre-sailing transform")
+
 activate()
 clock = 2; remote.OnServerEvent:Fire(player, boat, session, "Alive")
 heartbeat:Fire(0.1); assert(not root.Anchored)

@@ -143,6 +143,25 @@ the six-point hull footprint, parked and physical. Model extents, helm, sail
 and passenger seats do not define that footprint. Other prop profiles retain
 their existing sampling and kinematic path.
 
+## Public lifecycle and resting transform
+
+The boat Model exposes two gameplay-facing attributes:
+
+- `BoatState = "Docked"` while parked and following waves kinematically.
+- `BoatState = "Sailing"` only after the validated driver owns the released assembly.
+- `CurrentTransform` stores the BoatRoot resting CFrame.
+
+`CurrentTransform` is initialized from the placed BoatRoot, committed from the
+live physical hull on normal exit or logout, and restored from the last safe
+pre-release pose after a physics recovery. Docked wave height and pitch/roll are
+temporary presentation around this value; they never rewrite it. This is the
+seam a future persistence service can save without coupling DataStore work to
+the water controller.
+
+The internal `BoatPhysicsMode` values coordinate preparation, parking, driving
+and recovery. They remain diagnostic implementation detail so the public state
+contract stays the simple `Docked` / `Sailing` distinction.
+
 ## Ownership flow
 
 1. **KINEMATIC_IDLE:** the hull is anchored; WaterInteractionController runs
@@ -155,8 +174,11 @@ their existing sampling and kinematic path.
 3. **DYNAMIC_DRIVING:** the server validates the same driver/session/seat/root,
    unanchors the boat and assigns assembly ownership. The driver updates
    physical flotation before simulation. Every client's kinematic path yields.
-4. **Exit:** the server revokes ownership and anchors the hull. Local helpers
-   are destroyed. Kinematic state resumes from the current position/heading.
+4. **PARKING / Exit:** the server first stops the dynamic client path, captures
+   the live BoatRoot CFrame into `CurrentTransform`, revokes ownership, zeros
+   velocity and anchors the hull. It then publishes `BoatState = "Docked"`.
+   Local helpers are destroyed and kinematic wave motion resumes at that X/Z
+   and heading. Player logout uses this same current-location path.
 5. **Recovery:** a missing client heartbeat (3 seconds), ownership loss,
    helper failure or a fall 40 studs below the configured base surface parks
    the boat and restores its saved pre-release pivot. Re-entry is required
@@ -230,7 +252,8 @@ Automated tests execute actual controller/module source with mocked services:
 - averaged height/strength/offset formula in kinematic mode;
 - finite preparation force and physical spring/gravity force independent of thrust;
 - physical sampling without a camera and no concurrent PivotTo;
-- cleanup and resuming from the current X/Z after exit.
+- cleanup and resuming from the committed `CurrentTransform` after exit or logout;
+- `Docked`/`Sailing` publication and docked bobbing without mutating `CurrentTransform`.
 
 Run `tests/RunBoatDynamicTests.ps1 -LuauPath <path-to-luau.exe>`.
 These are lifecycle/math tests, not a Roblox physics simulator.

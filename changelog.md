@@ -1,3 +1,24 @@
+## v0.6.2-1-dev - 2026-09-16 - SmallBoat Lifecycle
+
+Completed the public Docked/Sailing lifecycle around the physical boat prototype.
+
+### Added
+
+* Replicated `BoatState` values: `Docked` and `Sailing`.
+* Replicated `CurrentTransform` as the BoatRoot resting transform and persistence seam.
+* A parking transition that stops the physical client path before ownership reset and anchoring.
+* Docked water-following initialization from `CurrentTransform`, including current X/Z and heading after every exit.
+* Regression coverage for exit-at-sea, logout-at-sea, repeated re-entry, recovery, and docked bobbing without mutating the resting transform.
+
+### Behaviour
+
+* A validated driver remains safely anchored until six-point water sampling and physical helpers report ready.
+* Sailing uses the current BoatRoot transform, physical spring lift, wave-up alignment, thrust, yaw torque, and lateral resistance.
+* Exiting or logging out commits the live physical transform, parks the assembly there, and resumes kinematic wave bobbing at that location.
+* Recovery still restores the last safe pre-release transform when physics fails or the hull falls below the safety threshold.
+* Internal `BoatPhysicsMode` transition values remain diagnostic implementation detail; gameplay state stays `Docked` or `Sailing`.
+* `WaterRotationStrength` can exceed 1 for bounded showcase exaggeration during physical sailing.
+
 ## v0.6.2-0-dev - 2026-09-15 - Boats | TIMESTAMP 21:08
 
 ## BOATS

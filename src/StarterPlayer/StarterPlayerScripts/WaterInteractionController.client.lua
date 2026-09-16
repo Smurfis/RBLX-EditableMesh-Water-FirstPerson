@@ -42,6 +42,7 @@ type InteractableState = {
 	root: BasePart,
 	model: Model?,
 	currentY: number,
+	restTransform: CFrame,
 	originPosition: Vector3,
 	yaw: number,
 	baseRotation: CFrame,
@@ -94,17 +95,21 @@ local function addInteractable(instance: Instance)
 		return
 	end
 
+	local storedTransform = instance:GetAttribute("CurrentTransform")
+	local restTransform = if typeof(storedTransform) == "CFrame" then storedTransform else root.CFrame
+
 	states[instance] = {
 		instance = instance,
 		root = root,
 		model = model,
 		currentY = root.Position.Y,
-		originPosition = root.Position,
-		yaw = select(2, root.CFrame:ToOrientation()),
-		baseRotation = root.CFrame.Rotation,
+		restTransform = restTransform,
+		originPosition = restTransform.Position,
+		yaw = select(2, restTransform:ToOrientation()),
+		baseRotation = restTransform.Rotation,
 		currentRotation = root.CFrame.Rotation,
 		targetY = root.Position.Y,
-		targetPosition = root.Position,
+		targetPosition = restTransform.Position,
 		targetRotation = root.CFrame.Rotation,
 		updateTimer = 0,
 		dynamic = nil,
@@ -423,7 +428,7 @@ local function updateDynamic(state: InteractableState, dt: number)
 	local maxLift = math.clamp(getNumberAttribute(boat, "BoatMaxLiftMultiplier", 2.5), 1, 4)
 	local acceleration = workspace.Gravity + (targetY - root.Position.Y) * stiffness - velocity.Y * damping
 	dynamic.force.Force = Vector3.yAxis * mass * math.clamp(acceleration, 0, workspace.Gravity * maxLift)
-	local strength = math.clamp(getNumberAttribute(boat, "WaterRotationStrength", 1), 0, 1)
+	local strength = math.clamp(getNumberAttribute(boat, "WaterRotationStrength", 1), 0, 3)
 	local up = Vector3.yAxis:Lerp(normal, strength).Unit
 	local forward = root.CFrame.LookVector
 	forward -= up * forward:Dot(up)
@@ -485,14 +490,27 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 		local mode = instance:GetAttribute("BoatPhysicsMode")
 		if state.dynamic or mode == "DYNAMIC_DRIVING" or not root.Anchored then return end
 	end
+	local storedTransform = instance:GetAttribute("CurrentTransform")
+	local replicatedRest = if typeof(storedTransform) == "CFrame" then storedTransform else nil
+	if replicatedRest and replicatedRest ~= state.restTransform and root.Anchored then
+		state.restTransform = replicatedRest
+		state.originPosition = replicatedRest.Position
+		state.yaw = select(2, replicatedRest:ToOrientation())
+		state.baseRotation = replicatedRest.Rotation
+		state.targetPosition = replicatedRest.Position
+		state.updateTimer = 0
+	end
 	if state.wasDynamic then
 		if not root.Anchored then return end
 		state.wasDynamic = false
-		state.originPosition = root.Position
-		state.yaw = select(2, root.CFrame:ToOrientation())
-		state.baseRotation = root.CFrame.Rotation
+		local resting = replicatedRest or root.CFrame
+		state.restTransform = resting
+		state.originPosition = resting.Position
+		state.yaw = select(2, resting:ToOrientation())
+		state.baseRotation = resting.Rotation
 		state.currentRotation = root.CFrame.Rotation
 		state.currentY = root.Position.Y
+		state.targetPosition = resting.Position
 		state.updateTimer = 0
 	end
 	if instance:GetAttribute("WaterBuoyancyOnContact") == true and instance:GetAttribute("WaterContacted") ~= true then
@@ -520,7 +538,8 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 		if instance:GetAttribute("WaterAllowHorizontalDrift") == true then
 			state.targetPosition = state.originPosition + displacement
 		else
-			state.targetPosition = Vector3.new(state.root.Position.X, 0, state.root.Position.Z)
+			local parkedPosition = if profile == PROFILES.Boat then state.originPosition else state.root.Position
+			state.targetPosition = Vector3.new(parkedPosition.X, 0, parkedPosition.Z)
 		end
 
 		local rotationStrength = math.max(0, getNumberAttribute(instance, "WaterRotationStrength", 1))

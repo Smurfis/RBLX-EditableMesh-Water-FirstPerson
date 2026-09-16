@@ -29,6 +29,7 @@ type State = {
 	active: boolean,
 	lastAlive: number,
 	lastSafePivot: CFrame?,
+	currentTransform: CFrame?,
 	failedOccupant: Humanoid?,
 	releaseStarted: number?,
 	repairOwnership: boolean,
@@ -80,6 +81,23 @@ local function setMode(state: State, mode: string)
 	end
 end
 
+local function setBoatState(state: State, value: string)
+	if state.boat:GetAttribute("BoatState") ~= value then
+		state.boat:SetAttribute("BoatState", value)
+	end
+end
+
+local function commitCurrentTransform(state: State, transform: CFrame)
+	state.currentTransform = transform
+	state.boat:SetAttribute("CurrentTransform", transform)
+end
+
+local function moveRootTo(state: State, target: CFrame)
+	local root = state.root
+	if not root then return end
+	state.boat:PivotTo(target * root.CFrame:Inverse() * state.boat:GetPivot())
+end
+
 local function captureParts(state: State)
 	for _, part in state.boat:GetDescendants() do
 		if part:IsA("BasePart") and state.originalAnchored[part] == nil then
@@ -125,16 +143,20 @@ local function assertReleased(root: BasePart)
 end
 
 local function park(state: State, failure: string?)
-	-- End dynamic ownership BEFORE restoring saved anchors, so anchor guards
-	-- cannot mistake an intentional exit/recovery for an external re-anchor.
+	-- Tell the client to stop forces before ownership or anchoring changes.
+	-- BoatState changes only after the final resting transform is committed.
+	setMode(state, "PARKING")
 	state.active = false
 	state.releaseStarted = nil
 	state.repairOwnership = false
-	-- Revoke ownership before anchoring. Preserve the helm's original free
-	-- parts; anchoring only the hull also safely covers initially unanchored rigs.
 	local root = state.root
+	local parkingTransform = if root and root.Parent then root.CFrame else nil
 	if root and root.Parent and root.Position.Y < WaterConfig.GetSurfaceY() - 40 then
 		failure = failure or "boat below safety threshold on exit"
+	end
+	if not failure and parkingTransform then
+		-- Commit the physical pose before revoking ownership or anchoring.
+		commitCurrentTransform(state, parkingTransform)
 	end
 	state.boat:SetAttribute("BoatPhysicsLastTransitionReason", failure or "parked: no validated dynamic driver")
 	activationLog(state.boat, failure or "PARK: no validated dynamic driver")
@@ -153,18 +175,21 @@ local function park(state: State, failure: string?)
 	if root and root.Parent then
 		root.Anchored = true
 	end
-	state.active = false
 	state.boat:SetAttribute("BoatDynamicDriverUserId", nil)
 	if failure then
 		state.failedOccupant = state.occupant
 		if state.lastSafePivot then
 			state.boat:PivotTo(state.lastSafePivot)
 		end
+		if root and root.Parent then
+			commitCurrentTransform(state, root.CFrame)
+		end
 		warn("[BoatPhysics][RECOVERY] " .. state.boat:GetFullName() .. ": " .. failure)
 		setMode(state, "RECOVERING")
 	else
 		setMode(state, "KINEMATIC_IDLE")
 	end
+	setBoatState(state, "Docked")
 end
 
 function Authority.Refresh(boat: Model)
@@ -187,10 +212,19 @@ function Authority.Refresh(boat: Model)
 		state = {
 			boat = boat, root = root, seat = seat, driver = nil, occupant = nil,
 			originalAnchored = {}, session = 0, active = false, lastAlive = 0,
-			lastSafePivot = nil, failedOccupant = nil,
+			lastSafePivot = nil, currentTransform = nil, failedOccupant = nil,
 			releaseStarted = nil, repairOwnership = false, anchorConnections = {}, warnedAnchors = {},
 		}
 		states[boat] = state
+		local storedTransform = boat:GetAttribute("CurrentTransform")
+		if typeof(storedTransform) == "CFrame" then
+			state.currentTransform = storedTransform
+			moveRootTo(state, storedTransform)
+		else
+			commitCurrentTransform(state, root.CFrame)
+		end
+		state.lastSafePivot = boat:GetPivot()
+		setBoatState(state, "Docked")
 		captureParts(state)
 		park(state)
 	end
@@ -224,6 +258,7 @@ function Authority.Refresh(boat: Model)
 	if driver then
 		captureParts(state)
 		state.lastSafePivot = boat:GetPivot()
+		commitCurrentTransform(state, root.CFrame)
 		activationLog(boat, "WAITING: valid BoatSeat driver, client Ready not received")
 		setMode(state, "DYNAMIC_PREPARING")
 	end
@@ -305,6 +340,7 @@ local function completeRelease(state: State)
 	state.boat:SetAttribute("BoatDynamicDriverUserId", player.UserId)
 	activationLog(state.boat, "ACTIVE: connected parts unanchored, finite mass, driver owns assembly", true)
 	setMode(state, "DYNAMIC_DRIVING")
+	setBoatState(state, "Sailing")
 	if RunService:IsStudio() and state.boat:GetAttribute("BoatPhysicsDebug") == true then BoatRuntimeDebug.Inspect(state.boat) end
 end
 
@@ -350,7 +386,7 @@ end)
 
 Players.PlayerRemoving:Connect(function(player)
 	for _, state in states do
-		if state.driver == player then park(state, "driver left the server") end
+		if state.driver == player then park(state) end
 	end
 end)
 

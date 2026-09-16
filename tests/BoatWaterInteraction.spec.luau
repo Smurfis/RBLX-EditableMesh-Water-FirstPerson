@@ -24,6 +24,11 @@ function vectors:Lerp(b,t) return self+(b-self)*t end
 Vector3.zero = Vector3.new(0,0,0); Vector3.yAxis = Vector3.new(0,1,0)
 local Vector2 = {new=function(x,z) return Vector3.new(x,0,z) end}
 local frames = {}; frames.__index = frames
+local builtinTypeof = typeof
+local function typeof(value)
+	if getmetatable(value) == frames then return "CFrame" end
+	return builtinTypeof(value)
+end
 local CFrame = {}
 local function frame(p,x,y,z)
 	local f=setmetatable({Position=p,RightVector=x,UpVector=y,LookVector=-z},frames)
@@ -195,10 +200,13 @@ pre:Fire(); assert(not root:FindFirstChild("BoatDynamicBuoyancyForce"),"failed s
 
 -- Exit resumes parked bobbing at the current location, never the spawn X/Z.
 root.Anchored=true; seat.Occupant=nil; humanoid.SeatPart=nil
+local leftTransform = root.CFrame
+boat:SetAttribute("CurrentTransform", leftTransform)
 boat:SetAttribute("BoatPhysicsMode","KINEMATIC_IDLE")
 workspace.CurrentCamera={CFrame=CFrame.new(100,12,-80)}
 pre:Fire(); render(1/30)
 assert(math.abs(root.Position.X-100)<1e-6 and math.abs(root.Position.Z+80)<1e-6)
+assert(boat:GetAttribute("CurrentTransform") == leftTransform, "docked bobbing overwrote resting transform")
 for i=2,11 do
 	seat.Occupant=humanoid; humanoid.SeatPart=seat
 	boat:SetAttribute("BoatDynamicSession",i); boat:SetAttribute("BoatPhysicsMode","DYNAMIC_PREPARING")
