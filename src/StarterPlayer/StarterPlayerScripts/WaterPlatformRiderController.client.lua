@@ -67,8 +67,14 @@ local function getPlatformFromFloor(floorPart: BasePart?): Instance?
 			if current:IsA("BasePart") then
 				return current
 			end
-			if current:IsA("Model") and current.PrimaryPart then
-				return current
+			if current:IsA("Model") then
+				local boatRoot = current:FindFirstChild("BoatRoot", true)
+				if current:GetAttribute("WaterProfile") == "Boat"
+					and current:GetAttribute("WaterDynamicPhysics") == true
+					and boatRoot and boatRoot:IsA("BasePart") then
+					return current
+				end
+				if current.PrimaryPart then return current end
 			end
 			return nil
 		end
@@ -77,10 +83,33 @@ local function getPlatformFromFloor(floorPart: BasePart?): Instance?
 	return nil
 end
 
+local function getDynamicBoatRoot(platform: Instance): BasePart?
+	if not platform:IsA("Model") or platform:GetAttribute("WaterProfile") ~= "Boat"
+		or platform:GetAttribute("WaterDynamicPhysics") ~= true then
+		return nil
+	end
+	local boatRoot = platform:FindFirstChild("BoatRoot", true)
+	return if boatRoot and boatRoot:IsA("BasePart") then boatRoot else nil
+end
+
+local function canCarryPlatform(platform: Instance): boolean
+	local boatRoot = getDynamicBoatRoot(platform)
+	if not boatRoot then return true end
+	-- A dismounted player can raycast onto the deck before the ownership and
+	-- anchoring handoff reaches this client. Never turn that last physical boat
+	-- delta into character motion. Establish a fresh baseline only after the
+	-- server has completed parking at the sailed-to transform.
+	return platform:GetAttribute("BoatPhysicsMode") == "KINEMATIC_IDLE"
+		and platform:GetAttribute("BoatState") == "Docked"
+		and boatRoot.Anchored
+end
+
 local function getPlatformCFrame(platform: Instance): CFrame?
 	if platform:IsA("BasePart") then
 		return platform.CFrame
 	end
+	local boatRoot = getDynamicBoatRoot(platform)
+	if boatRoot then return boatRoot.CFrame end
 	if platform:IsA("Model") and platform.PrimaryPart then
 		return platform.PrimaryPart.CFrame
 	end
@@ -137,6 +166,10 @@ local function carryCharacter()
 		getSupportingPart(currentHumanoid, currentRoot)
 	)
 	if not platform then
+		clearPlatform()
+		return
+	end
+	if not canCarryPlatform(platform) then
 		clearPlatform()
 		return
 	end

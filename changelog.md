@@ -19,6 +19,18 @@ Completed the public Docked/Sailing lifecycle around the physical boat prototype
 * Internal `BoatPhysicsMode` transition values remain diagnostic implementation detail; gameplay state stays `Docked` or `Sailing`.
 * `WaterRotationStrength` can exceed 1 for bounded showcase exaggeration during physical sailing.
 
+### Dismount lifecycle fix
+
+* Split normal `Dismounting` handback from genuine client `Failure` reporting.
+* Normal seat exit now parks at the live BoatRoot transform without entering recovery or applying the pre-sailing safety transform.
+* The client retains its last valid buoyancy/orientation output until the server publishes the parking transition, avoiding a gravity gap during ownership handback.
+* Recovery now requires a matching session and a driver whom the server still validates in the exact BoatSeat.
+* Recovery stores an exact BoatRoot safety CFrame rather than a Model pivot. Every server transform application logs its source, destination, reason, occupant and lifecycle state.
+* Parking now revokes driver authority, clears linear and angular velocity on every boat BasePart before anchoring, anchors at the captured sailed-to transform, and clears motion again after anchoring.
+* The former driver destroys all buoyancy, propulsion and orientation helpers on the server parking acknowledgement, then clears its local assembly motion. Parked kinematic writes also finish with zero assembly velocity so the anchored hull cannot behave like a conveyor.
+* Boat parking diagnostics report pre/post speed, linear/angular velocity, network owner, anchor state, occupant, lifecycle state, active movement constraints and moving helper/assembly parts.
+* `WaterPlatformRiderController` ignores dynamic boats during sailing, parking and recovery. It begins parked character carry from a fresh `BoatRoot` baseline only in `KINEMATIC_IDLE`, preventing a dismount frame from copying the boat's former sailing delta into the character.
+
 ## v0.6.2-0-dev - 2026-09-15 - Boats | TIMESTAMP 21:08
 
 ## BOATS

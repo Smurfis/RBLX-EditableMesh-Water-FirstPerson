@@ -69,7 +69,13 @@ local function instance(class, name, parent)
 		return nil
 	end
 	function obj:GetAttribute(key) return self.attributes[key] end
-	function obj:SetAttribute(key, value) self.attributes[key] = value end
+	function obj:SetAttribute(key, value)
+		self.attributes[key] = value
+		if key == "BoatPhysicsMode" then
+			self.modeHistory = self.modeHistory or {}
+			table.insert(self.modeHistory, value)
+		end
+	end
 	function obj:GetFullName() return self.Name end
 	function obj:GetPivot() return self.pivot end
 	function obj:PivotTo(pivot) self.pivot = pivot; self.restores = (self.restores or 0) + 1 end
@@ -81,7 +87,14 @@ local function typeof(value)
 	if type(value) == "table" and value.__cframe then return "CFrame" end
 	return builtinTypeof(value)
 end
-local Vector3 = { zero = {} }
+local vectorMetatable = {}
+vectorMetatable.__index = function(vector, key)
+	if key == "Magnitude" then return math.sqrt(vector.X * vector.X + vector.Y * vector.Y + vector.Z * vector.Z) end
+	return vectorMetatable[key]
+end
+local Vector3 = {}
+function Vector3.new(x, y, z) return setmetatable({ X = x, Y = y, Z = z }, vectorMetatable) end
+Vector3.zero = Vector3.new(0, 0, 0)
 local clock = 0
 local os = { clock = function() return clock end }
 local warnings = {}
@@ -152,6 +165,12 @@ local function fixture()
 		part.Anchored = true
 		table.insert(root.connected, part)
 	end
+	for _, part in boat:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.AssemblyLinearVelocity = Vector3.zero
+			part.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
 	local character = instance("Model", "Character")
 	local player = instance("Player", "Driver")
 	player.UserId = 10; player.Character = character; character.player = player
@@ -202,8 +221,25 @@ remote.OnServerEvent:Fire(player, boat, session, "Ready")
 assert(root.ownershipCalls == calls, "duplicate ready repeated release")
 local leftTransform = cframe("left-at-sea")
 root.CFrame = leftTransform
+root.AssemblyLinearVelocity = Vector3.new(28, 13, -7)
+root.AssemblyAngularVelocity = Vector3.new(0.4, 1.2, -0.3)
+wheel.AssemblyLinearVelocity = Vector3.new(28, 13, -7)
+wheel.AssemblyAngularVelocity = Vector3.new(0.4, 1.2, -0.3)
+-- Client seat state changes before the server's Occupant property. The explicit
+-- handback must park normally even while the server still sees the old driver.
+local transitionsBeforeDismount = #boat.modeHistory
+remote.OnServerEvent:Fire(player, boat, session, "Dismounting")
+assert(root.Anchored and root.owner == nil and not wheel.Anchored)
+assert(boat:GetAttribute("BoatPhysicsMode") == "KINEMATIC_IDLE")
+assert(#boat.modeHistory == transitionsBeforeDismount + 2)
+assert(boat.modeHistory[#boat.modeHistory - 1] == "PARKING" and boat.modeHistory[#boat.modeHistory] == "KINEMATIC_IDLE")
+assert(boat:GetAttribute("BoatState") == "Docked")
+assert(boat:GetAttribute("CurrentTransform") == leftTransform, "dismount restored the activation transform")
+assert(root.AssemblyLinearVelocity.Magnitude == 0 and root.AssemblyAngularVelocity.Magnitude == 0, "BoatRoot retained sailing motion after parking")
+assert(wheel.AssemblyLinearVelocity.Magnitude == 0 and wheel.AssemblyAngularVelocity.Magnitude == 0, "separate boat part retained sailing motion after parking")
 seat.Occupant = nil; humanoid.SeatPart = nil
 Authority.Refresh(boat)
+assert(#boat.modeHistory == transitionsBeforeDismount + 2, "seat replication parked the boat twice")
 assert(root.Anchored and root.owner == nil and not wheel.Anchored)
 assert(boat:GetAttribute("BoatPhysicsMode") == "KINEMATIC_IDLE")
 assert(boat:GetAttribute("BoatState") == "Docked")
@@ -244,12 +280,18 @@ remote.OnServerEvent:Fire(player, boat, session, "Ready")
 assert(root.Anchored, "failed session must remain blocked until exit")
 
 activate(); root.Position.Y = -50; heartbeat:Fire(0.1)
-assert(root.Anchored and boat.restores >= 2, "abyss must restore safe pivot")
+assert(root.Anchored and boat.restores >= 2, "abyss must restore safe BoatRoot transform")
 root.Position.Y = 10
 activate(); root.owner = stranger; heartbeat:Fire(0.1)
 assert(root.Anchored, "lost ownership must recover")
-activate(); remote.OnServerEvent:Fire(player, boat, session, "Stop")
+activate(); remote.OnServerEvent:Fire(player, boat, session, "Failure", "disabled helper")
 assert(root.Anchored, "client failure must recover")
+assert(boat:GetAttribute("BoatPhysicsMode") == "RECOVERING")
+-- Compatibility Stop is graceful; it must never recreate the dismount bug.
+activate(); local legacyStopTransform = cframe("legacy-stop-at-sea"); root.CFrame = legacyStopTransform
+remote.OnServerEvent:Fire(player, boat, session, "Stop")
+assert(boat:GetAttribute("BoatPhysicsMode") == "KINEMATIC_IDLE")
+assert(boat:GetAttribute("CurrentTransform") == legacyStopTransform)
 activate(); boat.tagged = false; removed:Fire(boat)
 assert(root.Anchored, "tag removal must park")
 
@@ -265,4 +307,4 @@ assert(#warnings >= 6)
 Authority.Remove(other)
 otherRoot.Anchored = true
 assert(otherRoot.Anchored)
-_G.print("PASS: boat authority validation, ready ordering, ten mount cycles, timeout/abyss/ownership/helper/tag recovery")
+_G.print("PASS: current-transform dismount, complete motion stop, ten mount cycles, and isolated timeout/abyss/ownership/helper/tag recovery")

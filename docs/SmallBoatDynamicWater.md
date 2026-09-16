@@ -174,19 +174,41 @@ contract stays the simple `Docked` / `Sailing` distinction.
 3. **DYNAMIC_DRIVING:** the server validates the same driver/session/seat/root,
    unanchors the boat and assigns assembly ownership. The driver updates
    physical flotation before simulation. Every client's kinematic path yields.
-4. **PARKING / Exit:** the server first stops the dynamic client path, captures
-   the live BoatRoot CFrame into `CurrentTransform`, revokes ownership, zeros
-   velocity and anchors the hull. It then publishes `BoatState = "Docked"`.
-   Local helpers are destroyed and kinematic wave motion resumes at that X/Z
-   and heading. Player logout uses this same current-location path.
+4. **PARKING / Exit:** local seat exit sends one explicit `Dismounting`
+   handback and stops propulsion while retaining the last valid buoyancy output.
+   The server captures the live BoatRoot CFrame into `CurrentTransform`, revokes
+   ownership, clears every boat assembly's linear/angular velocity, anchors the
+   hull at that same transform, then clears motion a second time. It then publishes
+   `BoatState = "Docked"`; the client destroys its helpers and kinematic wave
+   motion resumes at that X/Z and heading. Player logout uses this same
+   current-location path. No recovery transform is consulted.
 5. **Recovery:** a missing client heartbeat (3 seconds), ownership loss,
    helper failure or a fall 40 studs below the configured base surface parks
    the boat and restores its saved pre-release pivot. Re-entry is required
    after a failure; repeated readiness cannot restart the failed session.
 
-`ReplicatedStorage.BoatDynamicReady` carries session-bound Ready/Alive/Stop
-notifications only. Clients cannot nominate roots, owners, water heights or
-recovery transforms. The server samples no waves and performs no water raycasts.
+`ReplicatedStorage.BoatDynamicReady` carries session-bound `Ready`, `Alive`,
+`Dismounting` and `Failure` notifications. A matching validated session may
+request normal handback even while seat replication is changing. `Failure`
+enters recovery only while the server still validates that driver in the exact
+BoatSeat. Clients cannot nominate roots, owners, water heights or recovery
+transforms. The server samples no waves and performs no water raycasts.
+
+The former driver's client also clears local linear/angular motion after it sees
+the server parking mode, after destroying `BoatDynamicBuoyancyForce`,
+`BoatDynamicAlignOrientation`, `BoatPropulsionForce` and `BoatSteeringTorque`.
+Parked kinematic wave writes finish with zero assembly velocity. The platform
+rider refuses dynamic SmallBoat frames during `DYNAMIC_DRIVING`, `PARKING` and
+`RECOVERING`; it establishes a new `BoatRoot` baseline only after
+`KINEMATIC_IDLE`. This prevents both stale contact velocity and a full sailing
+frame delta from being transferred to a character standing on the parked deck.
+
+`[BoatParkingMotion]` lines are emitted immediately before and after the server
+parking transaction and client helper cleanup. They include total/horizontal
+speed, linear and angular velocity, network owner, anchored state, occupant,
+lifecycle state, active force/velocity/alignment constraints and any moving
+boat assembly/helper parts. `[BoatTransform]` separately records every
+server-side `PivotTo`, including its current and destination BoatRoot CFrames.
 
 ## Design choices
 
@@ -253,7 +275,13 @@ Automated tests execute actual controller/module source with mocked services:
 - finite preparation force and physical spring/gravity force independent of thrust;
 - physical sampling without a camera and no concurrent PivotTo;
 - cleanup and resuming from the committed `CurrentTransform` after exit or logout;
-- `Docked`/`Sailing` publication and docked bobbing without mutating `CurrentTransform`.
+- `Docked`/`Sailing` publication and docked bobbing without mutating `CurrentTransform`;
+- explicit dismount-before-Occupant-replication handback without recovery;
+- separate validated helper-failure recovery and legacy graceful teardown;
+- nonzero forward, vertical and angular sailing motion is zero after parking on
+  both server and former-driver client, including a separate boat assembly;
+- the platform rider ignores sailing/parking/recovery deltas and resumes parked
+  `BoatRoot` carry from a fresh `KINEMATIC_IDLE` baseline.
 
 Run `tests/RunBoatDynamicTests.ps1 -LuauPath <path-to-luau.exe>`.
 These are lifecycle/math tests, not a Roblox physics simulator.

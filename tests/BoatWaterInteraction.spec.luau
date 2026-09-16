@@ -59,6 +59,9 @@ end
 local nodes = {}
 local function node(class,name,parent)
 	local o={ClassName=class,Name=name,Parent=parent,attrs={},Enabled=true}
+	if class=="MeshPart" or class=="VehicleSeat" then
+		o.AssemblyLinearVelocity=Vector3.zero; o.AssemblyAngularVelocity=Vector3.zero; o.Anchored=false
+	end
 	table.insert(nodes,o)
 	function o:IsA(c) return c==self.ClassName or (c=="BasePart" and (class=="MeshPart" or class=="VehicleSeat")) end
 	function o:FindFirstChild(n,recursive)
@@ -74,6 +77,17 @@ local function node(class,name,parent)
 		return nil
 	end
 	function o:FindFirstChildOfClass(c) for _,v in nodes do if v.Parent==self and v.ClassName==c then return v end end return nil end
+	function o:GetDescendants()
+		local descendants={}
+		for _,v in nodes do
+			local cursor=v.Parent
+			while cursor do
+				if cursor==self then table.insert(descendants,v); break end
+				cursor=cursor.Parent
+			end
+		end
+		return descendants
+	end
 	function o:WaitForChild(n) return assert(self:FindFirstChild(n),n) end
 	function o:GetAttribute(k) return self.attrs[k] end
 	function o:SetAttribute(k,v) self.attrs[k]=v end
@@ -139,6 +153,7 @@ local root=node("MeshPart","BoatRoot",deck)
 root.Size=Vector3.new(8,2,20); root.Anchored=true; root.AssemblyMass=math.huge
 root.AssemblyLinearVelocity=Vector3.zero; root.AssemblyRootPart=root
 root.AssemblyAngularVelocity=Vector3.zero
+function root:GetNetworkOwner() return root.owner end
 function root:GetMass() return 50 end
 function root:GetConnectedParts() return {} end
 local function place(x,y,z,yaw)
@@ -192,9 +207,33 @@ assert(math.abs(force.Force.Y-expectedForce)<1e-6,"wrong gravity cancellation/sp
 assert(force.Force.X==0 and force.Force.Z==0,"propulsion modified buoyancy force")
 render(1/30); assert(boat.pivots==pivots,"PivotTo while driving")
 
--- Disabling a helper must stop the session and clean up all three objects.
+-- Normal local dismount explicitly hands back the current boat without
+-- reporting a physics failure. Buoyancy remains until server PARKING arrives.
+local messagesBeforeDismount=#messages
+root.AssemblyLinearVelocity=Vector3.new(24,15,-9)
+root.AssemblyAngularVelocity=Vector3.new(.4,1.3,-.2)
+seat.Occupant=nil; humanoid.SeatPart=nil
+pre:Fire()
+assert(#messages==messagesBeforeDismount+1 and messages[#messages][3]=="Dismounting")
+assert(force.Parent==root and align.Parent==root,"dismount removed buoyancy before server handback")
+pre:Fire()
+assert(#messages==messagesBeforeDismount+1,"dismount handshake repeated")
+root.Anchored=true; boat:SetAttribute("BoatPhysicsMode","PARKING")
+pre:Fire()
+assert(not force.Parent and not align.Parent,"helpers survived server parking acknowledgement")
+assert(root.AssemblyLinearVelocity.Magnitude==0 and root.AssemblyAngularVelocity.Magnitude==0,"client retained sailing motion after parking")
+
+-- A real helper failure while the validated driver is still seated is the
+-- separate recovery path and must clean up immediately.
+seat.Occupant=humanoid; humanoid.SeatPart=seat
+boat:SetAttribute("BoatPhysicsMode","DYNAMIC_PREPARING"); boat:SetAttribute("BoatDynamicSession",2)
+pre:Fire()
+force=root:FindFirstChild("BoatDynamicBuoyancyForce")
+align=root:FindFirstChild("BoatDynamicAlignOrientation")
+root.Anchored=false; boat:SetAttribute("BoatPhysicsMode","DYNAMIC_DRIVING")
+pre:Fire()
 force.Enabled=false; pre:Fire()
-assert(messages[#messages][3]=="Stop" and not force.Parent and not align.Parent)
+assert(messages[#messages][3]=="Failure" and messages[#messages][4]~=nil and not force.Parent and not align.Parent)
 assert(not root:FindFirstChild("BoatDynamicPhysicsAttachment"))
 pre:Fire(); assert(not root:FindFirstChild("BoatDynamicBuoyancyForce"),"failed session recreated helpers")
 
@@ -207,7 +246,7 @@ workspace.CurrentCamera={CFrame=CFrame.new(100,12,-80)}
 pre:Fire(); render(1/30)
 assert(math.abs(root.Position.X-100)<1e-6 and math.abs(root.Position.Z+80)<1e-6)
 assert(boat:GetAttribute("CurrentTransform") == leftTransform, "docked bobbing overwrote resting transform")
-for i=2,11 do
+for i=3,12 do
 	seat.Occupant=humanoid; humanoid.SeatPart=seat
 	boat:SetAttribute("BoatDynamicSession",i); boat:SetAttribute("BoatPhysicsMode","DYNAMIC_PREPARING")
 	clock+=1; pre:Fire()
@@ -297,4 +336,4 @@ assert(drive.force.Force.Magnitude==0 and drive.torque.Torque.Magnitude==0)
 Propulsion.Destroy(drive)
 assert(not drive.force.Parent and not drive.torque.Parent)
 print("PASS: forward/reverse ramp, coasting drag, speed resistance, signed yaw, reverse/low-speed steering, hull-relative thrust, slip catch, frame-rate response and cleanup")
-print("PASS: six BoatRoot samples, kinematic formula, finite preparation, physical lift, current footprint, no competing PivotTo, failure cleanup and ten re-entries")
+print("PASS: six BoatRoot samples, explicit dismount handback, retained lift until PARKING, complete local motion stop, isolated failure cleanup and ten re-entries")

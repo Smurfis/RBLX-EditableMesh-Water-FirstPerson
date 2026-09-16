@@ -35,6 +35,7 @@ type DynamicState = {
 	lastMessage: number,
 	lastDebug: number,
 	remote: RemoteEvent,
+	dismountSent: boolean,
 }
 
 type InteractableState = {
@@ -118,12 +119,9 @@ local function addInteractable(instance: Instance)
 	}
 end
 
-local function clearDynamic(state: InteractableState, notifyServer: boolean)
+local function clearDynamic(state: InteractableState)
 	local dynamic = state.dynamic
 	if not dynamic then return end
-	if notifyServer then
-		dynamic.remote:FireServer(state.instance, dynamic.session, "Stop")
-	end
 	BoatPropulsion.Destroy(dynamic.propulsion)
 	state.instance:SetAttribute("BoatConsumedSteerFloat", 0)
 	state.instance:SetAttribute("BoatConsumedThrottleFloat", 0)
@@ -133,9 +131,94 @@ local function clearDynamic(state: InteractableState, notifyServer: boolean)
 	state.dynamic = nil
 end
 
+local function zeroBoatMotion(state: InteractableState)
+	local function zeroPart(part: BasePart)
+		part.AssemblyLinearVelocity = Vector3.zero
+		part.AssemblyAngularVelocity = Vector3.zero
+	end
+	if state.model then
+		for _, descendant in state.model:GetDescendants() do
+			if descendant:IsA("BasePart") then zeroPart(descendant :: BasePart) end
+		end
+	else
+		zeroPart(state.root)
+	end
+end
+
+local function getClientNetworkOwnerName(root: BasePart): string
+	if root.Anchored then return "SERVER (anchored)" end
+	local ok, owner = pcall(function()
+		return (root.AssemblyRootPart or root):GetNetworkOwner()
+	end)
+	if not ok then return "UNAVAILABLE" end
+	return if owner then owner:GetFullName() else "SERVER"
+end
+
+local function describeClientMotion(state: InteractableState): (string, string)
+	local constraints = {}
+	local movingParts = {}
+	local descendants = if state.model then state.model:GetDescendants() else { state.root }
+	for _, descendant in descendants do
+		if descendant:IsA("VectorForce") then
+			local force = descendant :: VectorForce
+			table.insert(constraints, string.format("%s[Enabled=%s Force=%s]", force:GetFullName(), tostring(force.Enabled), tostring(force.Force)))
+		elseif descendant:IsA("LinearVelocity") then
+			local velocity = descendant :: LinearVelocity
+			table.insert(constraints, string.format("%s[Enabled=%s VectorVelocity=%s]", velocity:GetFullName(), tostring(velocity.Enabled), tostring(velocity.VectorVelocity)))
+		elseif descendant:IsA("AngularVelocity") then
+			local velocity = descendant :: AngularVelocity
+			table.insert(constraints, string.format("%s[Enabled=%s AngularVelocity=%s]", velocity:GetFullName(), tostring(velocity.Enabled), tostring(velocity.AngularVelocity)))
+		elseif descendant:IsA("Torque") then
+			local torque = descendant :: Torque
+			table.insert(constraints, string.format("%s[Enabled=%s Torque=%s]", torque:GetFullName(), tostring(torque.Enabled), tostring(torque.Torque)))
+		elseif descendant:IsA("AlignPosition") or descendant:IsA("AlignOrientation") then
+			local constraint = descendant :: any
+			table.insert(constraints, string.format("%s[Enabled=%s]", constraint:GetFullName(), tostring(constraint.Enabled)))
+		elseif descendant:IsA("BasePart") then
+			local part = descendant :: BasePart
+			if part.AssemblyLinearVelocity.Magnitude > 0.001 or part.AssemblyAngularVelocity.Magnitude > 0.001
+				or string.find(part.Name, "BoatDynamic", 1, true) then
+				table.insert(movingParts, string.format("%s[linear=%s angular=%s anchored=%s]", part:GetFullName(), tostring(part.AssemblyLinearVelocity), tostring(part.AssemblyAngularVelocity), tostring(part.Anchored)))
+			end
+		end
+	end
+	return if #constraints > 0 then table.concat(constraints, "; ") else "NONE",
+		if #movingParts > 0 then table.concat(movingParts, "; ") else "NONE"
+end
+
+local function logClientMotionState(state: InteractableState, phase: string, reason: string)
+	local root = state.root
+	local linear = root.AssemblyLinearVelocity
+	local horizontalSpeed = math.sqrt(linear.X * linear.X + linear.Z * linear.Z)
+	local constraints, movingParts = describeClientMotion(state)
+	local seat = state.instance:FindFirstChild("BoatSeat", true)
+	local occupant = if seat and seat:IsA("VehicleSeat") then seat.Occupant else nil
+	print(string.format(
+		"[BoatParkingMotion][CLIENT][%s] boat=%s reason=%s speed=%.3f horizontalSpeed=%.3f linear=%s angular=%s owner=%s anchored=%s occupant=%s physicsMode=%s boatState=%s constraints=%s movingParts=%s",
+		phase, state.instance:GetFullName(), reason, linear.Magnitude, horizontalSpeed,
+		tostring(linear), tostring(root.AssemblyAngularVelocity), getClientNetworkOwnerName(root),
+		tostring(root.Anchored), if occupant then occupant:GetFullName() else "NONE",
+		tostring(state.instance:GetAttribute("BoatPhysicsMode")), tostring(state.instance:GetAttribute("BoatState")),
+		constraints, movingParts
+	))
+end
+
+local function finishDynamicTransition(state: InteractableState, reason: string)
+	logClientMotionState(state, "BEFORE", reason)
+	clearDynamic(state)
+	zeroBoatMotion(state)
+	logClientMotionState(state, "AFTER", reason)
+end
+
 local function removeInteractable(instance: Instance)
 	local state = states[instance]
-	if state then clearDynamic(state, true) end
+	if state then
+		if state.dynamic or state.wasDynamic then
+			finishDynamicTransition(state, "WaterInteractable removed")
+		else
+			clearDynamic(state)
+		end
+	end
 	states[instance] = nil
 end
 
@@ -318,7 +401,15 @@ local function failDynamic(state: InteractableState, message: string)
 		warn("[BoatPhysics][FAIL] " .. state.instance:GetFullName() .. ": " .. message)
 	end
 	state.failedSession = if typeof(session) == "number" then session else nil
-	clearDynamic(state, true)
+	local dynamic = state.dynamic
+	if dynamic then
+		dynamic.remote:FireServer(state.instance, dynamic.session, "Failure", message)
+	end
+	if state.dynamic or state.wasDynamic then
+		finishDynamicTransition(state, "dynamic failure: " .. message)
+	else
+		clearDynamic(state)
+	end
 end
 
 local function prepareDynamic(state: InteractableState, session: number): DynamicState?
@@ -362,7 +453,7 @@ local function prepareDynamic(state: InteractableState, session: number): Dynami
 		propulsion = BoatPropulsion.Create(root, attachment),
 		attachment = attachment, force = force, orientation = orientation,
 		session = session, preparedMass = mass, lastMessage = -math.huge,
-		lastDebug = -math.huge, remote = remote,
+		lastDebug = -math.huge, remote = remote, dismountSent = false,
 	}
 	state.dynamic = dynamic
 	state.wasDynamic = true
@@ -373,7 +464,11 @@ local function updateDynamic(state: InteractableState, dt: number)
 	local boat, root = state.instance, state.root
 	local mode = boat:GetAttribute("BoatPhysicsMode")
 	if not isDynamicBoat(state) or not isEnabled(boat) then
-		clearDynamic(state, true)
+		if state.dynamic then
+			finishDynamicTransition(state, "dynamic boat disabled or no longer opted in")
+		elseif not state.wasDynamic then
+			clearDynamic(state)
+		end
 		return
 	end
 	if mode == "DYNAMIC_DRIVING" then state.wasDynamic = true end
@@ -384,10 +479,30 @@ local function updateDynamic(state: InteractableState, dt: number)
 	local localDriver = seat and seat:IsA("VehicleSeat") and humanoid
 		and seat.Occupant == humanoid and humanoid.SeatPart == seat and humanoid.Health > 0
 	local permitted = mode == "DYNAMIC_PREPARING" or mode == "DYNAMIC_DRIVING"
-	if not localDriver or not permitted or typeof(session) ~= "number" then
-		clearDynamic(state, mode == "DYNAMIC_DRIVING")
+	if not permitted or typeof(session) ~= "number" then
+		if state.dynamic then
+			finishDynamicTransition(state, "server mode acknowledged parking: " .. tostring(mode))
+		elseif not state.wasDynamic then
+			clearDynamic(state)
+		end
 		return
 	end
+	if not localDriver then
+		local dynamic = state.dynamic
+		if dynamic then
+			BoatPropulsion.Stop(dynamic.propulsion)
+			if not dynamic.dismountSent then
+				dynamic.dismountSent = true
+				logClientMotionState(state, "DISMOUNT_REQUEST", "local driver left BoatSeat")
+				dynamic.remote:FireServer(boat, dynamic.session, "Dismounting")
+			end
+		end
+		-- Keep the last valid buoyancy/orientation output alive until the server
+		-- publishes PARKING/KINEMATIC_IDLE. This avoids a gravity gap during
+		-- the explicit ownership handback.
+		return
+	end
+	if state.dynamic then state.dynamic.dismountSent = false end
 	if state.failedSession == session then return end
 	if mode == "DYNAMIC_DRIVING" and boat:GetAttribute("BoatDynamicDriverUserId") ~= player.UserId then
 		if state.dynamic then BoatPropulsion.Stop(state.dynamic.propulsion) end
@@ -395,7 +510,7 @@ local function updateDynamic(state: InteractableState, dt: number)
 		-- from another client's boat; the server watchdog owns failed handoffs.
 		return
 	end
-	if state.dynamic and state.dynamic.session ~= session then clearDynamic(state, false) end
+	if state.dynamic and state.dynamic.session ~= session then clearDynamic(state) end
 	if root.Name ~= "BoatRoot" then
 		failDynamic(state, "BoatRoot missing")
 		return
@@ -502,6 +617,10 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 	end
 	if state.wasDynamic then
 		if not root.Anchored then return end
+		-- The server already cleared motion, but the former driver may still have
+		-- a final locally simulated packet. Clear it again before the first
+		-- kinematic PivotTo and before character contact resumes.
+		zeroBoatMotion(state)
 		state.wasDynamic = false
 		local resting = replicatedRest or root.CFrame
 		state.restTransform = resting
@@ -561,6 +680,11 @@ local function updateState(state: InteractableState, dt: number, cameraPosition:
 	state.currentRotation = state.currentRotation:Lerp(state.targetRotation, rotationAlpha)
 
 	movePose(state, Vector3.new(state.targetPosition.X, state.currentY, state.targetPosition.Z), state.currentRotation)
+	if isDynamicBoat(state) and root.Anchored then
+		-- Anchored parts can carry an AssemblyLinearVelocity like a conveyor.
+		-- Kinematic wave presentation must end every frame with no physical motion.
+		zeroBoatMotion(state)
+	end
 end
 
 -- Physics runs before simulation and is independent of camera culling and

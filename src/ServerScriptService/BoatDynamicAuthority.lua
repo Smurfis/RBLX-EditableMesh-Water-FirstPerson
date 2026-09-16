@@ -28,10 +28,11 @@ type State = {
 	session: number,
 	active: boolean,
 	lastAlive: number,
-	lastSafePivot: CFrame?,
+	lastSafeTransform: CFrame?,
 	currentTransform: CFrame?,
 	failedOccupant: Humanoid?,
 	releaseStarted: number?,
+	dismountPending: boolean,
 	repairOwnership: boolean,
 	anchorConnections: { [BasePart]: RBXScriptConnection },
 	warnedAnchors: { [BasePart]: boolean },
@@ -92,9 +93,18 @@ local function commitCurrentTransform(state: State, transform: CFrame)
 	state.boat:SetAttribute("CurrentTransform", transform)
 end
 
-local function moveRootTo(state: State, target: CFrame)
+local function moveRootTo(state: State, target: CFrame, reason: string)
 	local root = state.root
 	if not root then return end
+	local seat = state.seat
+	local occupant = if seat then seat.Occupant else nil
+	print(string.format(
+		"[BoatTransform] boat=%s currentRoot=%s destinationRoot=%s reason=%s occupant=%s physicsMode=%s boatState=%s",
+		state.boat:GetFullName(), tostring(root.CFrame), tostring(target), reason,
+		if occupant then occupant:GetFullName() else "NONE",
+		tostring(state.boat:GetAttribute("BoatPhysicsMode")),
+		tostring(state.boat:GetAttribute("BoatState"))
+	))
 	state.boat:PivotTo(target * root.CFrame:Inverse() * state.boat:GetPivot())
 end
 
@@ -142,12 +152,86 @@ local function assertReleased(root: BasePart)
 	assert(root.AssemblyMass > 0 and root.AssemblyMass < math.huge, "BoatRoot assembly mass is not finite")
 end
 
+local function getNetworkOwnerName(root: BasePart): string
+	if root.Anchored then return "SERVER (anchored)" end
+	local ok, owner = pcall(function()
+		return (root.AssemblyRootPart or root):GetNetworkOwner()
+	end)
+	if not ok then return "UNAVAILABLE" end
+	return if owner then owner:GetFullName() else "SERVER"
+end
+
+local function describeMotionConstraints(boat: Model): string
+	local descriptions = {}
+	for _, descendant in boat:GetDescendants() do
+		if descendant:IsA("VectorForce") then
+			local force = descendant :: VectorForce
+			table.insert(descriptions, string.format("%s[Enabled=%s Force=%s]", force:GetFullName(), tostring(force.Enabled), tostring(force.Force)))
+		elseif descendant:IsA("LinearVelocity") then
+			local velocity = descendant :: LinearVelocity
+			table.insert(descriptions, string.format("%s[Enabled=%s VectorVelocity=%s]", velocity:GetFullName(), tostring(velocity.Enabled), tostring(velocity.VectorVelocity)))
+		elseif descendant:IsA("AngularVelocity") then
+			local velocity = descendant :: AngularVelocity
+			table.insert(descriptions, string.format("%s[Enabled=%s AngularVelocity=%s]", velocity:GetFullName(), tostring(velocity.Enabled), tostring(velocity.AngularVelocity)))
+		elseif descendant:IsA("Torque") then
+			local torque = descendant :: Torque
+			table.insert(descriptions, string.format("%s[Enabled=%s Torque=%s]", torque:GetFullName(), tostring(torque.Enabled), tostring(torque.Torque)))
+		elseif descendant:IsA("AlignPosition") or descendant:IsA("AlignOrientation") then
+			local constraint = descendant :: any
+			table.insert(descriptions, string.format("%s[Enabled=%s]", constraint:GetFullName(), tostring(constraint.Enabled)))
+		end
+	end
+	return if #descriptions > 0 then table.concat(descriptions, "; ") else "NONE"
+end
+
+local function describeMovingParts(boat: Model): string
+	local descriptions = {}
+	for _, descendant in boat:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			local part = descendant :: BasePart
+			local linear = part.AssemblyLinearVelocity or Vector3.zero
+			local angular = part.AssemblyAngularVelocity or Vector3.zero
+			if linear.Magnitude > 0.001 or angular.Magnitude > 0.001 or string.find(part.Name, "BoatDynamic", 1, true) then
+				table.insert(descriptions, string.format("%s[linear=%s angular=%s anchored=%s]", part:GetFullName(), tostring(linear), tostring(angular), tostring(part.Anchored)))
+			end
+		end
+	end
+	return if #descriptions > 0 then table.concat(descriptions, "; ") else "NONE"
+end
+
+local function logMotionState(state: State, phase: string, reason: string)
+	local root = state.root
+	if not root or not root.Parent then return end
+	local linear = root.AssemblyLinearVelocity
+	local horizontalSpeed = math.sqrt(linear.X * linear.X + linear.Z * linear.Z)
+	local occupant = if state.seat then state.seat.Occupant else nil
+	print(string.format(
+		"[BoatParkingMotion][SERVER][%s] boat=%s reason=%s speed=%.3f horizontalSpeed=%.3f linear=%s angular=%s owner=%s anchored=%s occupant=%s physicsMode=%s boatState=%s constraints=%s movingParts=%s",
+		phase, state.boat:GetFullName(), reason, linear.Magnitude, horizontalSpeed,
+		tostring(linear), tostring(root.AssemblyAngularVelocity), getNetworkOwnerName(root),
+		tostring(root.Anchored), if occupant then occupant:GetFullName() else "NONE",
+		tostring(state.boat:GetAttribute("BoatPhysicsMode")), tostring(state.boat:GetAttribute("BoatState")),
+		describeMotionConstraints(state.boat), describeMovingParts(state.boat)
+	))
+end
+
+local function zeroBoatMotion(state: State)
+	for _, descendant in state.boat:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			local part = descendant :: BasePart
+			part.AssemblyLinearVelocity = Vector3.zero
+			part.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end
+
 local function park(state: State, failure: string?)
 	-- Tell the client to stop forces before ownership or anchoring changes.
 	-- BoatState changes only after the final resting transform is committed.
 	setMode(state, "PARKING")
 	state.active = false
 	state.releaseStarted = nil
+	state.dismountPending = false
 	state.repairOwnership = false
 	local root = state.root
 	local parkingTransform = if root and root.Parent then root.CFrame else nil
@@ -158,6 +242,8 @@ local function park(state: State, failure: string?)
 		-- Commit the physical pose before revoking ownership or anchoring.
 		commitCurrentTransform(state, parkingTransform)
 	end
+	local parkingReason = failure or "normal driver release"
+	logMotionState(state, "BEFORE", parkingReason)
 	state.boat:SetAttribute("BoatPhysicsLastTransitionReason", failure or "parked: no validated dynamic driver")
 	activationLog(state.boat, failure or "PARK: no validated dynamic driver")
 	if root and root.Parent and not root.Anchored then
@@ -165,22 +251,26 @@ local function park(state: State, failure: string?)
 			(root.AssemblyRootPart or root):SetNetworkOwner(nil)
 		end)
 	end
+	-- Revoke the moving client's authority, then clear every assembly before
+	-- changing anchors. A second pass after anchoring rejects a final replicated
+	-- owner packet and prevents an anchored hull from behaving like a conveyor.
+	zeroBoatMotion(state)
 	for part, anchored in state.originalAnchored do
 		if part:IsDescendantOf(state.boat) then
-			part.AssemblyLinearVelocity = Vector3.zero
-			part.AssemblyAngularVelocity = Vector3.zero
 			part.Anchored = anchored
 		end
 	end
 	if root and root.Parent then
 		root.Anchored = true
 	end
+	zeroBoatMotion(state)
 	state.boat:SetAttribute("BoatDynamicDriverUserId", nil)
 	if failure then
 		state.failedOccupant = state.occupant
-		if state.lastSafePivot then
-			state.boat:PivotTo(state.lastSafePivot)
+		if state.lastSafeTransform then
+			moveRootTo(state, state.lastSafeTransform, "RECOVERING: " .. failure)
 		end
+		zeroBoatMotion(state)
 		if root and root.Parent then
 			commitCurrentTransform(state, root.CFrame)
 		end
@@ -190,6 +280,7 @@ local function park(state: State, failure: string?)
 		setMode(state, "KINEMATIC_IDLE")
 	end
 	setBoatState(state, "Docked")
+	logMotionState(state, "AFTER", parkingReason)
 end
 
 function Authority.Refresh(boat: Model)
@@ -212,18 +303,19 @@ function Authority.Refresh(boat: Model)
 		state = {
 			boat = boat, root = root, seat = seat, driver = nil, occupant = nil,
 			originalAnchored = {}, session = 0, active = false, lastAlive = 0,
-			lastSafePivot = nil, currentTransform = nil, failedOccupant = nil,
-			releaseStarted = nil, repairOwnership = false, anchorConnections = {}, warnedAnchors = {},
+			lastSafeTransform = nil, currentTransform = nil, failedOccupant = nil,
+			releaseStarted = nil, dismountPending = false, repairOwnership = false,
+			anchorConnections = {}, warnedAnchors = {},
 		}
 		states[boat] = state
 		local storedTransform = boat:GetAttribute("CurrentTransform")
 		if typeof(storedTransform) == "CFrame" then
 			state.currentTransform = storedTransform
-			moveRootTo(state, storedTransform)
+			moveRootTo(state, storedTransform, "INITIALIZE: apply replicated CurrentTransform")
 		else
 			commitCurrentTransform(state, root.CFrame)
 		end
-		state.lastSafePivot = boat:GetPivot()
+		state.lastSafeTransform = root.CFrame
 		setBoatState(state, "Docked")
 		captureParts(state)
 		park(state)
@@ -239,6 +331,29 @@ function Authority.Refresh(boat: Model)
 	local driver = if character and character:IsA("Model") then Players:GetPlayerFromCharacter(character) else nil
 	if occupant and (occupant.Health <= 0 or occupant.SeatPart ~= seat) then
 		driver = nil
+	end
+	if state.dismountPending then
+		if state.occupant == occupant and state.driver == driver then
+			-- The explicit handback already parked the boat. Wait for the server's
+			-- seat properties to catch up without starting or parking a second time.
+			return
+		end
+		state.dismountPending = false
+		state.session += 1
+		state.boat:SetAttribute("BoatDynamicSession", state.session)
+		state.occupant = occupant
+		state.driver = driver
+		state.failedOccupant = nil
+		if driver then
+			captureParts(state)
+			state.lastSafeTransform = root.CFrame
+			commitCurrentTransform(state, root.CFrame)
+			activationLog(boat, "WAITING: replacement BoatSeat driver, client Ready not received")
+			setMode(state, "DYNAMIC_PREPARING")
+		else
+			activationLog(boat, if occupant then "WAITING: occupant is not a living player with SeatPart == BoatSeat" else "WAITING: BoatSeat has no occupant")
+		end
+		return
 	end
 	if state.occupant == occupant and state.driver == driver then
 		if state.active or state.releaseStarted then releaseParts(state) end
@@ -257,7 +372,7 @@ function Authority.Refresh(boat: Model)
 	state.failedOccupant = nil
 	if driver then
 		captureParts(state)
-		state.lastSafePivot = boat:GetPivot()
+		state.lastSafeTransform = root.CFrame
 		commitCurrentTransform(state, root.CFrame)
 		activationLog(boat, "WAITING: valid BoatSeat driver, client Ready not received")
 		setMode(state, "DYNAMIC_PREPARING")
@@ -273,13 +388,25 @@ function Authority.Remove(boat: Model)
 	end
 end
 
-readyRemote.OnServerEvent:Connect(function(player: Player, boat: Instance, session: number, action: string)
+readyRemote.OnServerEvent:Connect(function(player: Player, boat: Instance, session: number, action: string, detail: any)
 	if typeof(boat) ~= "Instance" or not boat:IsA("Model") or not optedIn(boat) then
 		return
 	end
 	local state = states[boat]
 	if not state or state.session ~= session or state.driver ~= player then
 		if action == "Ready" then activationLog(boat, "READY REJECTED: session or validated driver does not match") end
+		return
+	end
+	-- Dismount is an explicit normal handback. Handle it before validating the
+	-- seat properties because Occupant/SeatPart replication is the state that is
+	-- actively changing. Legacy Stop messages are also treated as graceful so an
+	-- older client can never route ordinary teardown through recovery.
+	if action == "Dismounting" or action == "Stop" then
+		local mode = boat:GetAttribute("BoatPhysicsMode")
+		if mode == "DYNAMIC_PREPARING" or mode == "DYNAMIC_DRIVING" or mode == "PARKING" then
+			park(state)
+			state.dismountPending = true
+		end
 		return
 	end
 	local root, seat = state.root, state.seat
@@ -291,8 +418,12 @@ readyRemote.OnServerEvent:Connect(function(player: Player, boat: Instance, sessi
 		if action == "Ready" then activationLog(boat, "READY REJECTED: seat/root/humanoid validation failed or session is recovering") end
 		return
 	end
-	if action == "Stop" then
-		park(state, "driver reported dynamic helper/sample failure")
+	if action == "Failure" then
+		local mode = boat:GetAttribute("BoatPhysicsMode")
+		if mode == "DYNAMIC_PREPARING" or mode == "DYNAMIC_DRIVING" then
+			local failureDetail = if typeof(detail) == "string" then detail else "unspecified client failure"
+			park(state, "validated driver reported dynamic helper/sample failure: " .. failureDetail)
+		end
 		return
 	end
 	if state.active then
@@ -306,7 +437,7 @@ readyRemote.OnServerEvent:Connect(function(player: Player, boat: Instance, sessi
 		return
 	end
 	-- Ready is a notification, never permission to nominate another root/owner.
-	state.lastSafePivot = boat:GetPivot()
+	state.lastSafeTransform = root.CFrame
 	state.releaseStarted = os.clock()
 	activationLog(boat, "BEFORE UNANCHOR: Ready accepted for live boat", true)
 	releaseParts(state)
