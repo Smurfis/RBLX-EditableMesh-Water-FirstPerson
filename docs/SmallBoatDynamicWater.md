@@ -175,19 +175,24 @@ contract stays the simple `Docked` / `Sailing` distinction.
    unanchors the boat and assigns assembly ownership. The driver updates
    physical flotation before simulation. Every client's kinematic path yields.
 4. **PARKING / Exit:** local seat exit sends one explicit `Dismounting`
-   handback and stops propulsion while retaining the last valid buoyancy output.
+   handback, or the current driver reuses the server helm prompt to request the
+   same authority-owned stop path. Propulsion stops while retaining the last
+   valid buoyancy output.
    The server captures the live BoatRoot CFrame into `CurrentTransform`, revokes
    ownership, clears every boat assembly's linear/angular velocity, anchors the
    hull at that same transform, then clears motion a second time. It then publishes
    `BoatState = "Docked"`; the client destroys its helpers and kinematic wave
    motion resumes at that X/Z and heading. Player logout uses this same
    current-location path. No recovery transform is consulted.
-   Once the server also confirms that the same validated humanoid has left the
-   exact `BoatSeat`, it places that driver's HumanoidRootPart upright beside the
-   seat using the seat's live world CFrame. The offset clears the seat both
-   vertically and laterally to avoid immediate touch reseating. Character
-   linear/angular velocity is zeroed and `Humanoid.Sit` is set false; no boat
-   property or transform is changed by this UX step.
+   Unexpected loss of the validated occupant begins this normal parking path in
+   the server's `Occupant` callback. A direct `Humanoid.SeatPart` signal waits
+   only for the seat weld to clear, after which exactly one final character
+   placement uses a validated `HelmOccupantExit` or the live-seat fallback. The
+   marker must be parented to a BasePart in BoatRoot's driving assembly and
+   remain spatially close to the current BoatSeat/BoatRoot; a detached or stale
+   marker cannot teleport the player. Character linear/angular velocity is
+   zeroed before and after placement, and no boat property or transform is
+   changed by this UX step.
 5. **Recovery:** a missing client heartbeat (3 seconds), ownership loss,
    helper failure or a fall 40 studs below the configured base surface parks
    the boat and restores its saved pre-release pivot. Re-entry is required
@@ -215,6 +220,19 @@ speed, linear and angular velocity, network owner, anchored state, occupant,
 lifecycle state, active force/velocity/alignment constraints and any moving
 boat assembly/helper parts. `[BoatTransform]` separately records every
 server-side `PivotTo`, including its current and destination BoatRoot CFrames.
+`[BoatExitValidation]` reports the live exit-marker parent, assembly roots,
+BoatRoot/BoatSeat/attachment transforms, spatial distances and whether the
+authored marker or live-seat fallback was selected.
+
+## Helm interaction
+
+`BoatHelmBoarding` owns only the fixed-helm `ProximityPrompt`, server validation,
+the per-helm interaction lock and the final `BoatSeat:Sit(humanoid)` call. Entry
+does not move the character or touch boat physics. The prompt uses Roblox's
+default glyph with blank action/object text and remains usable by the current
+driver to request the authority-owned safe dismount. A presentation-only local
+script hides an occupied helm from other players; the server independently
+rejects every invalid trigger. See `docs/HelmBoarding.md` for Studio setup.
 
 ## Design choices
 
@@ -289,7 +307,12 @@ Automated tests execute actual controller/module source with mocked services:
 - the platform rider ignores sailing/parking/recovery deltas and resumes parked
   `BoatRoot` carry from a fresh `KINEMATIC_IDLE` baseline;
 - the validated driver is moved only after server-observed seat exit and
-  `KINEMATIC_IDLE`, using the live BoatSeat pose with zero inherited motion.
+  `KINEMATIC_IDLE`, using one authored-or-fallback placement with zero inherited
+  motion;
+- minimal helm glyph configuration, direct server seating, occupied-helm
+  rejection, current-driver dismount and the two-player interaction lock;
+- immediate active-driver seat-loss parking and direct SeatPart completion;
+- stale/detached `HelmOccupantExit` rejection with a current live-seat fallback.
 
 Run `tests/RunBoatDynamicTests.ps1 -LuauPath <path-to-luau.exe>`.
 These are lifecycle/math tests, not a Roblox physics simulator.
@@ -297,5 +320,8 @@ These are lifecycle/math tests, not a Roblox physics simulator.
 **Studio status:** the user confirmed the complete SmallBoat lifecycle passes:
 mounting, sailing, helm/IK, parking at the sailed-to location, residual-motion
 cleanup, stable parked standing, re-entry and clean BoatSeat exit placement.
+The final `HelmOccupantExit` authoring check requires the Studio attachment to be
+reparented from the Helm container to BoatRoot, BoatSeat or another fixed
+BasePart in the live boat assembly; the runtime fallback is safe until then.
 Client ownership retains Roblox's usual trust limitations; this prototype adds
 no authoritative racing, damage or progression decisions.

@@ -4,7 +4,8 @@ $repo = Split-Path $PSScriptRoot -Parent
 foreach ($case in @(
     @('BoatDynamicAuthority.spec.luau', 'src/ServerScriptService/BoatDynamicAuthority.lua', '--[[AUTHORITY_SOURCE]]'),
     @('BoatWaterInteraction.spec.luau', 'src/StarterPlayer/StarterPlayerScripts/WaterInteractionController.client.lua', '--[[CONTROLLER_SOURCE]]'),
-    @('BoatPlatformRider.spec.luau', 'src/StarterPlayer/StarterPlayerScripts/WaterPlatformRiderController.client.lua', '--[[PLATFORM_RIDER_SOURCE]]')
+    @('BoatPlatformRider.spec.luau', 'src/StarterPlayer/StarterPlayerScripts/WaterPlatformRiderController.client.lua', '--[[PLATFORM_RIDER_SOURCE]]'),
+    @('BoatHelmBoarding.spec.luau', 'src/ServerScriptService/BoatHelmBoarding.lua', '--[[HELM_BOARDING_SOURCE]]')
 )) {
     $fixture = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot $case[0])
     $controller = Get-Content -Raw -LiteralPath (Join-Path $repo $case[1])

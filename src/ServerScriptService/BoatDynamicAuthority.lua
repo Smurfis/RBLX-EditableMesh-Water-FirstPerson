@@ -18,6 +18,21 @@ end
 assert(remote:IsA("RemoteEvent"), "ReplicatedStorage.BoatDynamicReady must be a RemoteEvent")
 local readyRemote = remote :: RemoteEvent
 
+local MAX_EXIT_TO_SEAT_DISTANCE = 20
+local MAX_EXIT_TO_ROOT_DISTANCE = 35
+
+type ExitAttachmentInfo = {
+	Attachment: Attachment?,
+	Parent: Instance?,
+	ParentPart: BasePart?,
+	ParentAssemblyRoot: BasePart?,
+	BoatAssemblyRoot: BasePart?,
+	DistanceToSeat: number?,
+	DistanceToRoot: number?,
+	SameAssembly: boolean,
+	SpatiallyPlausible: boolean,
+}
+
 type State = {
 	boat: Model,
 	root: BasePart?,
@@ -35,6 +50,11 @@ type State = {
 	dismountPending: boolean,
 	pendingExitPlayer: Player?,
 	pendingExitHumanoid: Humanoid?,
+	pendingExitBeforeSeatLoss: CFrame?,
+	pendingExitSeatPartAtLoss: BasePart?,
+	pendingExitAttachment: Attachment?,
+	pendingExitSeatConnection: RBXScriptConnection?,
+	pendingExitPlacementInProgress: boolean,
 	repairOwnership: boolean,
 	anchorConnections: { [BasePart]: RBXScriptConnection },
 	warnedAnchors: { [BasePart]: boolean },
@@ -227,20 +247,113 @@ local function zeroBoatMotion(state: State)
 	end
 end
 
-local function queueDriverExit(state: State, player: Player?, humanoid: Humanoid?)
-	if not player or not humanoid or humanoid.Health <= 0 or player.Character ~= humanoid.Parent then return end
-	state.pendingExitPlayer = player
-	state.pendingExitHumanoid = humanoid
+local function fullName(instance: Instance?): string
+	return if instance then instance:GetFullName() else "MISSING"
 end
 
-local function placePendingDriverExit(state: State)
+local function inspectExitAttachment(state: State): ExitAttachmentInfo
+	local root = state.root
+	local seat = state.seat
+	local candidate = state.boat:FindFirstChild("HelmOccupantExit", true)
+	local attachment = if candidate and candidate:IsA("Attachment") then candidate :: Attachment else nil
+	local parent = if attachment then attachment.Parent else nil
+	local parentPart = if parent and parent:IsA("BasePart") then parent :: BasePart else nil
+	local parentAssemblyRoot = if parentPart then parentPart.AssemblyRootPart else nil
+	local boatAssemblyRoot = if root then root.AssemblyRootPart or root else nil
+	local distanceToSeat = if attachment and seat
+		then (attachment.WorldPosition - seat.Position).Magnitude else nil
+	local distanceToRoot = if attachment and root
+		then (attachment.WorldPosition - root.Position).Magnitude else nil
+	local sameAssembly = parentAssemblyRoot ~= nil and boatAssemblyRoot ~= nil
+		and parentAssemblyRoot == boatAssemblyRoot
+	local spatiallyPlausible = attachment ~= nil and parentPart ~= nil
+		and distanceToSeat ~= nil and distanceToSeat <= MAX_EXIT_TO_SEAT_DISTANCE
+		and distanceToRoot ~= nil and distanceToRoot <= MAX_EXIT_TO_ROOT_DISTANCE
+	return {
+		Attachment = attachment,
+		Parent = parent,
+		ParentPart = parentPart,
+		ParentAssemblyRoot = parentAssemblyRoot,
+		BoatAssemblyRoot = boatAssemblyRoot,
+		DistanceToSeat = distanceToSeat,
+		DistanceToRoot = distanceToRoot,
+		SameAssembly = sameAssembly,
+		SpatiallyPlausible = spatiallyPlausible,
+	}
+end
+
+local function logExitValidation(state: State, info: ExitAttachmentInfo, phase: string, source: string)
+	local root = state.root
+	local seat = state.seat
+	local parent = info.Parent
+	local parentPart = info.ParentPart
+	print(string.format(
+		"[BoatExitValidation]\nphase=%s\nBoatRoot = %s\nBoatRootAssemblyRoot = %s\nBoatSeat = %s\nExitAttachment = %s\nExitParent = %s [IsBasePart=%s Anchored=%s]\nExitParentAssemblyRoot = %s\ndistanceExitToSeat = %s\ndistanceExitToRoot = %s\nsameAssembly = %s\nsource=%s",
+		phase,
+		if root then tostring(root.CFrame) else "MISSING",
+		fullName(info.BoatAssemblyRoot),
+		if seat then tostring(seat.CFrame) else "MISSING",
+		if info.Attachment then tostring(info.Attachment.WorldCFrame) else "MISSING",
+		fullName(parent), tostring(parentPart ~= nil),
+		if parentPart then tostring(parentPart.Anchored) else "n/a",
+		fullName(info.ParentAssemblyRoot),
+		if info.DistanceToSeat then string.format("%.3f", info.DistanceToSeat) else "n/a",
+		if info.DistanceToRoot then string.format("%.3f", info.DistanceToRoot) else "n/a",
+		tostring(info.SameAssembly), source
+	))
+end
+
+local placePendingDriverExit: (State) -> ()
+
+local function clearPendingDriverExit(state: State)
+	if state.pendingExitSeatConnection then
+		state.pendingExitSeatConnection:Disconnect()
+		state.pendingExitSeatConnection = nil
+	end
+	state.pendingExitPlayer = nil
+	state.pendingExitHumanoid = nil
+	state.pendingExitBeforeSeatLoss = nil
+	state.pendingExitSeatPartAtLoss = nil
+	state.pendingExitAttachment = nil
+	state.pendingExitPlacementInProgress = false
+end
+
+local function queueDriverExit(state: State, player: Player?, humanoid: Humanoid?)
+	if not player or not humanoid or humanoid.Health <= 0 or player.Character ~= humanoid.Parent then return end
+	if state.pendingExitHumanoid ~= humanoid then
+		clearPendingDriverExit(state)
+	end
+	state.pendingExitPlayer = player
+	state.pendingExitHumanoid = humanoid
+	state.pendingExitSeatPartAtLoss = humanoid.SeatPart
+	local exitInfo = inspectExitAttachment(state)
+	local attachmentValid = exitInfo.SameAssembly and exitInfo.SpatiallyPlausible
+	state.pendingExitAttachment = if attachmentValid then exitInfo.Attachment else nil
+	logExitValidation(state, exitInfo, "BeforeParking",
+		if attachmentValid then "HelmOccupantExit" else "LiveSeatFallback")
+	local characterRoot = humanoid.Parent:FindFirstChild("HumanoidRootPart")
+	if characterRoot and characterRoot:IsA("BasePart") then
+		state.pendingExitBeforeSeatLoss = characterRoot.CFrame
+	end
+	if not state.pendingExitSeatConnection then
+		-- Occupant and SeatPart do not have to clear in the same engine update.
+		-- Observe SeatPart directly so final placement never waits for the 10 Hz
+		-- authority watchdog after the server has already parked the vessel.
+		state.pendingExitSeatConnection = humanoid:GetPropertyChangedSignal("SeatPart"):Connect(function()
+			if states[state.boat] == state then
+				placePendingDriverExit(state)
+			end
+		end)
+	end
+end
+
+placePendingDriverExit = function(state: State)
 	local player = state.pendingExitPlayer
 	local humanoid = state.pendingExitHumanoid
-	if not player or not humanoid then return end
+	if not player or not humanoid or state.pendingExitPlacementInProgress then return end
 	local character = player.Character
 	if not character or humanoid.Parent ~= character or humanoid.Health <= 0 then
-		state.pendingExitPlayer = nil
-		state.pendingExitHumanoid = nil
+		clearPendingDriverExit(state)
 		return
 	end
 	if state.boat:GetAttribute("BoatPhysicsMode") ~= "KINEMATIC_IDLE" then return end
@@ -248,45 +361,98 @@ local function placePendingDriverExit(state: State)
 	if not seat or not seat.Parent or seat.Occupant == humanoid or humanoid.SeatPart == seat then return end
 	local characterRoot = character:FindFirstChild("HumanoidRootPart")
 	if not characterRoot or not characterRoot:IsA("BasePart") then
-		state.pendingExitPlayer = nil
-		state.pendingExitHumanoid = nil
+		clearPendingDriverExit(state)
 		return
 	end
 
 	local rootPart = characterRoot :: BasePart
-	local verticalClearance = seat.Size.Y * 0.5 + math.max(0, humanoid.HipHeight)
-		+ rootPart.Size.Y * 0.5 + 0.5
-	local sideClearance = seat.Size.X * 0.5 + rootPart.Size.X * 0.5 + 0.35
-	local standingPosition = (seat.CFrame * CFrame.new(sideClearance, verticalClearance, 0)).Position
-	local seatForward = seat.CFrame.LookVector
-	local facing = Vector3.new(seatForward.X, 0, seatForward.Z)
-	if facing.Magnitude < 0.001 then
-		local currentForward = rootPart.CFrame.LookVector
-		facing = Vector3.new(currentForward.X, 0, currentForward.Z)
+	local beforeSeatLoss = state.pendingExitBeforeSeatLoss or rootPart.CFrame
+	local beforeFinalPlacement = rootPart.CFrame
+	local seatPartAtLoss = state.pendingExitSeatPartAtLoss
+	local validatedExitAttachment = state.pendingExitAttachment
+	local exitInfo = inspectExitAttachment(state)
+	-- Never trust an authored WorldCFrame merely because the Attachment exists.
+	-- Its BasePart had to share BoatRoot's live physical assembly before parking,
+	-- and its current uncached pose must still be plausible beside this boat.
+	local exitAttachment = if validatedExitAttachment ~= nil
+		and exitInfo.Attachment == validatedExitAttachment
+		and exitInfo.SpatiallyPlausible
+		then validatedExitAttachment else nil
+	local standingCFrame: CFrame
+	local placementSource: string
+	if exitAttachment then
+		-- This runs only after KINEMATIC_IDLE and after the seat weld/occupancy
+		-- is gone, so the authored marker cannot move the driver prematurely.
+		standingCFrame = exitAttachment.WorldCFrame
+		placementSource = exitAttachment:GetFullName()
+	else
+		local verticalClearance = seat.Size.Y * 0.5 + math.max(0, humanoid.HipHeight)
+			+ rootPart.Size.Y * 0.5 + 0.5
+		local sideClearance = seat.Size.X * 0.5 + rootPart.Size.X * 0.5 + 0.35
+		local standingPosition = (seat.CFrame * CFrame.new(sideClearance, verticalClearance, 0)).Position
+		local seatForward = seat.CFrame.LookVector
+		local facing = Vector3.new(seatForward.X, 0, seatForward.Z)
+		if facing.Magnitude < 0.001 then
+			local currentForward = rootPart.CFrame.LookVector
+			facing = Vector3.new(currentForward.X, 0, currentForward.Z)
+		end
+		if facing.Magnitude < 0.001 then facing = Vector3.new(0, 0, -1) end
+		standingCFrame = CFrame.lookAt(standingPosition, standingPosition + facing.Unit, Vector3.yAxis)
+		placementSource = "BoatSeat fallback"
 	end
-	if facing.Magnitude < 0.001 then facing = Vector3.new(0, 0, -1) end
+	logExitValidation(state, exitInfo, "FinalPlacement",
+		if exitAttachment then "HelmOccupantExit" else "LiveSeatFallback")
 
 	-- The seat weld is already gone. Clear jump/boat momentum on the character
-	-- assembly and place it beside the live seat without touching the boat.
-	humanoid.Sit = false
-	humanoid.Jump = false
-	rootPart.AssemblyLinearVelocity = Vector3.zero
-	rootPart.AssemblyAngularVelocity = Vector3.zero
-	rootPart.CFrame = CFrame.lookAt(standingPosition, standingPosition + facing.Unit, Vector3.yAxis)
-	rootPart.AssemblyLinearVelocity = Vector3.zero
-	rootPart.AssemblyAngularVelocity = Vector3.zero
-	humanoid.Sit = false
-	humanoid.Jump = false
-	print(string.format(
-		"[BoatExit] player=%s boat=%s seat=%s standingCFrame=%s physicsMode=%s",
-		player:GetFullName(), state.boat:GetFullName(), seat:GetFullName(), tostring(rootPart.CFrame),
-		tostring(state.boat:GetAttribute("BoatPhysicsMode"))
-	))
+	-- assembly and perform the one final exit placement without touching the boat.
+	state.pendingExitPlacementInProgress = true
+	-- Disconnect and clear the pending identity before the sole CFrame write so
+	-- re-entrant seat/property signals cannot perform a second placement.
+	if state.pendingExitSeatConnection then
+		state.pendingExitSeatConnection:Disconnect()
+		state.pendingExitSeatConnection = nil
+	end
 	state.pendingExitPlayer = nil
 	state.pendingExitHumanoid = nil
+	state.pendingExitBeforeSeatLoss = nil
+	state.pendingExitSeatPartAtLoss = nil
+	state.pendingExitAttachment = nil
+	humanoid.Sit = false
+	humanoid.Jump = false
+	rootPart.AssemblyLinearVelocity = Vector3.zero
+	rootPart.AssemblyAngularVelocity = Vector3.zero
+	rootPart.CFrame = standingCFrame
+	rootPart.AssemblyLinearVelocity = Vector3.zero
+	rootPart.AssemblyAngularVelocity = Vector3.zero
+	humanoid.Sit = false
+	humanoid.Jump = false
+	local afterPlacement = rootPart.CFrame
+	local displacement = (beforeFinalPlacement.Position - beforeSeatLoss.Position).Magnitude
+	print(string.format(
+		"[BoatDriverExit]\nHRP_beforeSeatLoss = %s\nHRP_beforeFinalPlacement = %s\nExitAttachment = %s\nHRP_afterPlacement = %s\ndisplacement = %.3f",
+		tostring(beforeSeatLoss), tostring(beforeFinalPlacement),
+		if exitAttachment then tostring(exitAttachment.WorldCFrame) else "MISSING (BoatSeat fallback)",
+		tostring(afterPlacement), displacement
+	))
+	if displacement > 3 then
+		warn(string.format(
+			"[BoatDriverExit] %.3f studs of pre-placement movement detected; source=%s. BoatDynamicAuthority made no character CFrame write before final placement.",
+			displacement,
+			if seatPartAtLoss == seat then
+				"Roblox SeatPart/SeatWeld teardown after Occupant cleared (platform-rider was suppressed by PARKING)"
+			else
+				"replicated character physics already free of BoatSeat (platform-rider was suppressed by PARKING)"
+		))
+	end
+	print(string.format(
+		"[BoatExit] player=%s boat=%s seat=%s standingCFrame=%s physicsMode=%s placementSource=%s",
+		player:GetFullName(), state.boat:GetFullName(), seat:GetFullName(), tostring(rootPart.CFrame),
+		tostring(state.boat:GetAttribute("BoatPhysicsMode")), placementSource
+	))
+	state.pendingExitPlacementInProgress = false
 end
 
-local function park(state: State, failure: string?)
+local function park(state: State, failure: string?, capturedParkingTransform: CFrame?)
 	-- Tell the client to stop forces before ownership or anchoring changes.
 	-- BoatState changes only after the final resting transform is committed.
 	setMode(state, "PARKING")
@@ -295,7 +461,7 @@ local function park(state: State, failure: string?)
 	state.dismountPending = false
 	state.repairOwnership = false
 	local root = state.root
-	local parkingTransform = if root and root.Parent then root.CFrame else nil
+	local parkingTransform = capturedParkingTransform or (if root and root.Parent then root.CFrame else nil)
 	if root and root.Parent and root.Position.Y < WaterConfig.GetSurfaceY() - 40 then
 		failure = failure or "boat below safety threshold on exit"
 	end
@@ -354,6 +520,7 @@ function Authority.Refresh(boat: Model)
 	if blocked or not root or not seat then
 		if state then
 			park(state, if state.active then "dynamic opt-in, BoatRoot or BoatSeat removed" else nil)
+			clearPendingDriverExit(state)
 			disconnectAnchors(state)
 			states[boat] = nil
 		end
@@ -366,7 +533,11 @@ function Authority.Refresh(boat: Model)
 			originalAnchored = {}, session = 0, active = false, lastAlive = 0,
 			lastSafeTransform = nil, currentTransform = nil, failedOccupant = nil,
 			releaseStarted = nil, dismountPending = false,
-			pendingExitPlayer = nil, pendingExitHumanoid = nil, repairOwnership = false,
+			pendingExitPlayer = nil, pendingExitHumanoid = nil,
+			pendingExitBeforeSeatLoss = nil, pendingExitSeatPartAtLoss = nil,
+			pendingExitAttachment = nil,
+			pendingExitSeatConnection = nil, pendingExitPlacementInProgress = false,
+			repairOwnership = false,
 			anchorConnections = {}, warnedAnchors = {},
 		}
 		states[boat] = state
@@ -393,6 +564,27 @@ function Authority.Refresh(boat: Model)
 	local driver = if character and character:IsA("Model") then Players:GetPlayerFromCharacter(character) else nil
 	if occupant and (occupant.Health <= 0 or occupant.SeatPart ~= seat) then
 		driver = nil
+	end
+	-- Occupant loss from the validated driver is a normal dismount, not a
+	-- watchdog/recovery condition. Capture both live poses before doing any
+	-- lifecycle work, then synchronously enter PARKING in this property-change
+	-- callback. PARKING also prevents the client rider controller from consuming
+	-- a stale physical-boat delta; KINEMATIC_IDLE later establishes a new baseline.
+	local mode = state.boat:GetAttribute("BoatPhysicsMode")
+	if not state.dismountPending and occupant == nil and state.driver and state.occupant
+		and (mode == "DYNAMIC_PREPARING" or mode == "DYNAMIC_DRIVING") then
+		local departedDriver = state.driver
+		local departedHumanoid = state.occupant
+		local sailedToTransform = root.CFrame
+		queueDriverExit(state, departedDriver, departedHumanoid)
+		park(state, nil, sailedToTransform)
+		state.session += 1
+		state.boat:SetAttribute("BoatDynamicSession", state.session)
+		state.occupant = nil
+		state.driver = nil
+		state.failedOccupant = nil
+		placePendingDriverExit(state)
+		return
 	end
 	placePendingDriverExit(state)
 	if state.dismountPending then
@@ -449,10 +641,47 @@ function Authority.Refresh(boat: Model)
 	end
 end
 
+local function performDriverStop(state: State, player: Player, queueExit: boolean, forceSeatExit: boolean): boolean
+	if state.driver ~= player then
+		return false
+	end
+	local mode = state.boat:GetAttribute("BoatPhysicsMode")
+	if mode ~= "DYNAMIC_PREPARING" and mode ~= "DYNAMIC_DRIVING" and mode ~= "PARKING" then
+		return false
+	end
+	local occupant = state.occupant
+	if queueExit then
+		queueDriverExit(state, player, occupant)
+	end
+	park(state)
+	state.dismountPending = true
+	if forceSeatExit and occupant and occupant.Parent and occupant.Health > 0 then
+		-- Parking and ownership handback are already complete. Request weld/seat
+		-- release now; final character placement still waits for Occupant and
+		-- SeatPart to clear inside placePendingDriverExit.
+		occupant.Jump = false
+		occupant.Sit = false
+	end
+	placePendingDriverExit(state)
+	return true
+end
+
+function Authority.RequestDismount(boat: Model, player: Player, humanoid: Humanoid): boolean
+	local state = states[boat]
+	local seat = if state then state.seat else nil
+	if not state or not seat or state.driver ~= player or state.occupant ~= humanoid
+		or seat.Occupant ~= humanoid or humanoid.SeatPart ~= seat
+		or player.Character ~= humanoid.Parent or humanoid.Health <= 0 then
+		return false
+	end
+	return performDriverStop(state, player, true, true)
+end
+
 function Authority.Remove(boat: Model)
 	local state = states[boat]
 	if state then
 		park(state)
+		clearPendingDriverExit(state)
 		disconnectAnchors(state)
 		states[boat] = nil
 	end
@@ -472,13 +701,7 @@ readyRemote.OnServerEvent:Connect(function(player: Player, boat: Instance, sessi
 	-- actively changing. Legacy Stop messages are also treated as graceful so an
 	-- older client can never route ordinary teardown through recovery.
 	if action == "Dismounting" or action == "Stop" then
-		local mode = boat:GetAttribute("BoatPhysicsMode")
-		if mode == "DYNAMIC_PREPARING" or mode == "DYNAMIC_DRIVING" or mode == "PARKING" then
-			if action == "Dismounting" then queueDriverExit(state, player, state.occupant) end
-			park(state)
-			state.dismountPending = true
-			placePendingDriverExit(state)
-		end
+		performDriverStop(state, player, action == "Dismounting", false)
 		return
 	end
 	local root, seat = state.root, state.seat

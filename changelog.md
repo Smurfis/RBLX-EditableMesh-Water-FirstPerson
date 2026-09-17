@@ -1,3 +1,37 @@
+## v0.6.2-2-dev - 2026-09-17 - Helm Prompt and Safe Occupant Exit
+
+Added a server-authoritative helm interaction without changing the validated SmallBoat physics lifecycle.
+
+### Helm interaction
+
+* Added a fixed-helm `ProximityPrompt` using Roblox's default keyboard/controller/mobile glyph with empty action and object text.
+* The server validates the live player character, Humanoid, range, boat lifecycle, current BoatSeat and per-helm interaction lock before calling `BoatSeat:Sit(humanoid)`.
+* Helm entry performs no walking, character transform, cached transform, ownership, buoyancy, propulsion or physics-mode operation.
+* The same prompt remains available to the current driver and routes dismount through `BoatDynamicAuthority`; other clients locally hide the occupied prompt and remain server-rejected.
+* Touch seating is disabled while the helm binding is active so the prompt remains the only boarding interaction.
+
+### Safe dismount
+
+* Explicit or unexpected loss of the validated BoatSeat occupant begins normal `PARKING` at the earliest server observation rather than waiting for heartbeat recovery.
+* The live sailed-to BoatRoot transform is captured before ownership reclamation, velocity cleanup and anchoring; `CurrentTransform` and normal parking semantics remain unchanged.
+* A direct `Humanoid.SeatPart` signal completes exit placement as soon as the seat weld is gone, avoiding the previous 10 Hz polling gap.
+* Driver exit performs exactly one final HumanoidRootPart placement and clears inherited character linear/angular velocity before and after it.
+* Added optional `HelmOccupantExit` support using its authored position and orientation, with the existing live-seat calculation retained as the fallback.
+
+### Stale exit-marker protection
+
+* Studio diagnostics identified `HelmOccupantExit` beneath `Workspace.Boats.Boat.Helm`, where its WorldCFrame remained near the original boat location after sailing.
+* An authored exit marker is now accepted only when its parent is a BasePart in BoatRoot's live physical assembly before parking and its current, uncached position remains within 20 studs of BoatSeat and 35 studs of BoatRoot.
+* Missing, detached or spatially stale markers can no longer teleport a driver; they select `LiveSeatFallback` beside the current BoatSeat.
+* `[BoatExitValidation]`, `[BoatDriverExit]` and helm-seat diagnostics report live hierarchy, assembly roots, transforms, source selection and pre-placement displacement for Studio verification.
+* `HelmOccupantExit` must be reparented in Studio to BoatRoot, BoatSeat or another fixed BasePart rigidly connected to BoatRoot, then positioned/oriented at the desired exit pose.
+
+### Tests
+
+* Added focused coverage for glyph configuration, direct seating, current-driver dismount, range/lifecycle validation, occupied-helm rejection and the two-player reservation lock.
+* Added regression coverage for immediate seat-loss parking, exact single exit placement, authored exit orientation, live-seat fallback, stale/detached marker rejection, velocity cleanup and repeated re-entry.
+* Existing dynamic authority, six-point flotation, propulsion and platform-rider suites continue to pass.
+
 ## v0.6.2-1-dev - 2026-09-16 - SmallBoat Lifecycle
 
 Completed the public Docked/Sailing lifecycle around the physical boat prototype.

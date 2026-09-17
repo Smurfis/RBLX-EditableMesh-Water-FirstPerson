@@ -11,6 +11,7 @@
 local Workspace = game:GetService("Workspace")
 
 local BoatDynamicAuthority = require(script.Parent:WaitForChild("BoatDynamicAuthority"))
+local BoatHelmBoarding = require(script.Parent:WaitForChild("BoatHelmBoarding"))
 
 local BOATS_FOLDER_NAME = "Boats"
 local BOAT_SEAT_NAME = "BoatSeat"
@@ -101,6 +102,7 @@ local function refreshBoat(boat: Model)
 	disconnectSteering(binding)
 	disconnectOccupant(binding)
 	BoatDynamicAuthority.Refresh(boat)
+	BoatHelmBoarding.Refresh(boat)
 
 	local seat = findBoatSeat(boat)
 
@@ -112,6 +114,7 @@ local function refreshBoat(boat: Model)
 
 	binding.OccupantConnection = seat:GetPropertyChangedSignal("Occupant"):Connect(function()
 		BoatDynamicAuthority.Refresh(boat)
+		BoatHelmBoarding.Refresh(boat)
 	end)
 
 	if not hinge then
@@ -148,6 +151,9 @@ local function addBoat(boat: Model)
 			if name == "WaterDynamicPhysics" or name == "WaterProfile" or name == "WaterEnabled" then
 				BoatDynamicAuthority.Refresh(boat)
 			end
+			if name == "BoatPhysicsMode" or name == "BoatState" or name == "HelmPromptDistance" then
+				BoatHelmBoarding.Refresh(boat)
+			end
 		end),
 
 		DescendantConnection = boat.DescendantAdded:Connect(function()
@@ -172,6 +178,7 @@ local function removeBoat(boat: Model)
 
 	disconnectSteering(binding)
 	disconnectOccupant(binding)
+	BoatHelmBoarding.Remove(boat)
 	BoatDynamicAuthority.Remove(boat)
 	binding.AttributeConnection:Disconnect()
 	binding.DescendantConnection:Disconnect()

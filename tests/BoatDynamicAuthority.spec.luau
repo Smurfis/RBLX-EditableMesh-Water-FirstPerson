@@ -30,15 +30,27 @@ function frames.__mul(left, right)
 	)
 end
 local function cframe(name)
-	return setmetatable({ Name = name, __cframe = true }, frames)
+	return setmetatable({ Name = name, Position = Vector3.zero, __cframe = true }, frames)
 end
 
 local function instance(class, name, parent)
 	local obj = { ClassName = class, Name = name, Parent = parent, attributes = {}, children = {}, __instance = true }
 	obj.anchorSignal = signal()
+	obj.seatPartSignal = signal()
 	setmetatable(obj, {
 		__index = function(self, key)
 			if key == "Anchored" then return rawget(self, "_anchored") end
+			if key == "SeatPart" then return rawget(self, "_seatPart") end
+			if key == "CFrame" then return rawget(self, "_cframe") end
+			if key == "WorldCFrame" then return rawget(self, "_worldCFrame") end
+			if key == "WorldPosition" then
+				local worldCFrame = rawget(self, "_worldCFrame")
+				return if worldCFrame then worldCFrame.Position else nil
+			end
+			if key == "Position" then
+				local currentCFrame = rawget(self, "_cframe")
+				return if currentCFrame then currentCFrame.Position else nil
+			end
 			if key == "AssemblyMass" then
 				if self.staleMass or self.Anchored then return math.huge end
 				for _, part in self:GetConnectedParts(true) do if part.Anchored then return math.huge end end
@@ -50,10 +62,21 @@ local function instance(class, name, parent)
 				local changed = rawget(self, "_anchored") ~= value
 				rawset(self, "_anchored", value)
 				if changed then self.anchorSignal:Fire() end
+			elseif key == "SeatPart" then
+				local changed = rawget(self, "_seatPart") ~= value
+				rawset(self, "_seatPart", value)
+				if changed then self.seatPartSignal:Fire() end
+			elseif key == "CFrame" then
+				rawset(self, "_cframe", value)
+				rawset(self, "cframeWrites", (rawget(self, "cframeWrites") or 0) + 1)
+			elseif key == "WorldCFrame" then
+				rawset(self, "_worldCFrame", value)
 			else rawset(self, key, value) end
 		end,
 	})
-	function obj:GetPropertyChangedSignal(_) return self.anchorSignal end
+	function obj:GetPropertyChangedSignal(property)
+		return if property == "SeatPart" then self.seatPartSignal else self.anchorSignal
+	end
 	function obj:GetConnectedParts(_) return self.connected or {} end
 	if parent then table.insert(parent.children, obj) end
 	function obj:IsA(wanted) return wanted == self.ClassName or (wanted == "BasePart" and (self.ClassName == "Part" or self.ClassName == "MeshPart" or self.ClassName == "VehicleSeat")) end
@@ -107,6 +130,7 @@ vectorMetatable.__index = function(vector, key)
 	return vectorMetatable[key]
 end
 function vectorMetatable.__add(left, right) return Vector3.new(left.X + right.X, left.Y + right.Y, left.Z + right.Z) end
+function vectorMetatable.__sub(left, right) return Vector3.new(left.X - right.X, left.Y - right.Y, left.Z - right.Z) end
 function vectorMetatable.__mul(left, right)
 	if type(left) == "number" then left, right = right, left end
 	return Vector3.new(left.X * right, left.Y * right, left.Z * right)
@@ -172,7 +196,7 @@ local function fixture()
 	boat:SetAttribute("WaterDynamicPhysics", true)
 	local deck = instance("Model", "Deck", boat)
 	local root = instance("MeshPart", "BoatRoot", deck)
-	root.Position = { Y = 10 }; root.Anchored = true; root.AssemblyRootPart = root
+	root.Position = Vector3.new(50, 10, 20); root.Anchored = true; root.AssemblyRootPart = root
 	root.CFrame = boat.pivot
 	root.owner = nil; root.ownershipCalls = 0
 	function boat:GetPivot() return root.CFrame end
@@ -296,6 +320,86 @@ assert(characterRoot.AssemblyLinearVelocity.Magnitude == 0 and characterRoot.Ass
 remote.OnServerEvent:Fire(player, boat, session, "Ready")
 assert(root.Anchored, "late ready after exit released boat")
 
+-- An authored exit marker is exit-only and must not be applied until parking
+-- has completed and server seat occupancy has cleared.
+local exitAttachment = instance("Attachment", "HelmOccupantExit", root)
+local authoredExit = CFrame.new(72, 22, -30)
+exitAttachment.WorldCFrame = authoredExit
+seat.Occupant = humanoid; humanoid.SeatPart = seat; Authority.Refresh(boat)
+session = boat:GetAttribute("BoatDynamicSession")
+remote.OnServerEvent:Fire(player, boat, session, "Ready")
+heartbeat:Fire(0.1)
+assert(root.owner == player and boat:GetAttribute("BoatPhysicsMode") == "DYNAMIC_DRIVING")
+local authoredExitSailTransform = cframe("authored-exit-sailed-location")
+root.CFrame = authoredExitSailTransform
+root.Position = Vector3.new(70, 18, -30)
+local beforeAuthoredExit = cframe("before-authored-exit")
+characterRoot.CFrame = beforeAuthoredExit
+characterRoot.AssemblyLinearVelocity = Vector3.new(12, 4, -3)
+characterRoot.AssemblyAngularVelocity = Vector3.new(0.2, 0.5, -0.1)
+humanoid.Sit = true
+assert(not Authority.RequestDismount(boat, stranger, humanoid), "non-driver requested prompt dismount")
+assert(Authority.RequestDismount(boat, player, humanoid), "validated prompt dismount was rejected")
+assert(root.Anchored and root.owner == nil and boat:GetAttribute("BoatPhysicsMode") == "KINEMATIC_IDLE")
+assert(boat:GetAttribute("CurrentTransform") == authoredExitSailTransform)
+assert(not humanoid.Sit, "prompt dismount did not request BoatSeat release")
+assert(characterRoot.CFrame == beforeAuthoredExit, "HelmOccupantExit was used before BoatSeat occupancy cleared")
+seat.Occupant = nil; humanoid.SeatPart = nil; Authority.Refresh(boat)
+assert(characterRoot.CFrame == authoredExit, "driver did not use authored HelmOccupantExit WorldCFrame")
+assert(root.CFrame == authoredExitSailTransform and boat:GetAttribute("CurrentTransform") == authoredExitSailTransform,
+	"authored exit placement changed the parked boat transform")
+assert(characterRoot.AssemblyLinearVelocity.Magnitude == 0 and characterRoot.AssemblyAngularVelocity.Magnitude == 0,
+	"authored exit retained inherited boat motion")
+
+-- Unexpected active-driver Occupant loss must park in this Refresh call, not
+-- the 10 Hz heartbeat. If SeatPart clears later, its direct signal performs
+-- exactly one final placement and no intermediate beside-seat write.
+seat.Occupant = humanoid; humanoid.SeatPart = seat; Authority.Refresh(boat)
+session = boat:GetAttribute("BoatDynamicSession")
+remote.OnServerEvent:Fire(player, boat, session, "Ready")
+heartbeat:Fire(0.1)
+assert(root.owner == player and boat:GetAttribute("BoatPhysicsMode") == "DYNAMIC_DRIVING")
+local suddenSeatLossTransform = cframe("sudden-seat-loss-sailed-location")
+root.CFrame = suddenSeatLossTransform
+-- Reproduce the Studio failure: the Attachment instance still exists beneath
+-- the boat hierarchy, but is not parented to a BasePart in BoatRoot's assembly
+-- and its world pose is hundreds of studs from the current live seat.
+local staleDetachedExit = CFrame.new(63, 13.5, 212)
+exitAttachment.Parent = boat
+exitAttachment.WorldCFrame = staleDetachedExit
+local hrpAtSeatLoss = CFrame.new(20, 15, -8)
+characterRoot.CFrame = hrpAtSeatLoss
+characterRoot.AssemblyLinearVelocity = Vector3.new(20, 2, -4)
+characterRoot.AssemblyAngularVelocity = Vector3.new(0.1, 0.8, -0.2)
+humanoid.Sit = false
+seat.Occupant = nil
+Authority.Refresh(boat)
+assert(root.Anchored and root.owner == nil, "explicit Occupant loss did not reclaim ownership immediately")
+assert(boat:GetAttribute("BoatPhysicsMode") == "KINEMATIC_IDLE" and boat:GetAttribute("BoatState") == "Docked",
+	"explicit Occupant loss waited for watchdog recovery instead of normal parking")
+assert(boat:GetAttribute("CurrentTransform") == suddenSeatLossTransform,
+	"explicit Occupant loss did not capture the live sailed-to transform")
+assert(characterRoot.CFrame == hrpAtSeatLoss,
+	"driver was placed before SeatPart cleared")
+local simulatedSeatReleaseDrift = CFrame.new(24, 15, -8)
+characterRoot.CFrame = simulatedSeatReleaseDrift
+local writesBeforeFinalPlacement = characterRoot.cframeWrites
+humanoid.SeatPart = nil
+assert(characterRoot.CFrame ~= staleDetachedExit, "stale HelmOccupantExit teleported the driver")
+assert(math.abs(characterRoot.CFrame.Position.X - 72.35) < 1e-6
+	and math.abs(characterRoot.CFrame.Position.Y - 22) < 1e-6
+	and math.abs(characterRoot.CFrame.Position.Z + 30) < 1e-6,
+	"stale HelmOccupantExit did not use the current live-seat fallback")
+assert(characterRoot.cframeWrites == writesBeforeFinalPlacement + 1,
+	"driver exit performed more than one final character placement")
+assert(characterRoot.AssemblyLinearVelocity.Magnitude == 0 and characterRoot.AssemblyAngularVelocity.Magnitude == 0,
+	"sudden seat loss retained inherited boat motion")
+Authority.Refresh(boat)
+assert(characterRoot.cframeWrites == writesBeforeFinalPlacement + 1,
+	"later authority refresh repeated final character placement")
+exitAttachment.Parent = root
+exitAttachment.WorldCFrame = authoredExit
+
 for _ = 1, 10 do
 	seat.Occupant = humanoid; humanoid.SeatPart = seat; Authority.Refresh(boat)
 	session = boat:GetAttribute("BoatDynamicSession")
@@ -356,4 +460,4 @@ assert(#warnings >= 6)
 Authority.Remove(other)
 otherRoot.Anchored = true
 assert(otherRoot.Anchored)
-_G.print("PASS: current-transform dismount, live-seat driver exit placement, complete motion stop, ten mount cycles, and isolated recovery")
+_G.print("PASS: immediate seat-loss parking, stale exit-marker rejection, single fallback/authored placement, current-transform retention, complete motion stop, ten mount cycles, and isolated recovery")
