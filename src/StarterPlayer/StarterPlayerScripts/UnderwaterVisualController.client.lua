@@ -4,9 +4,10 @@
 -- StarterPlayerScripts > UnderwaterVisualController
 --
 -- Responsibilities:
---   * Determine whether the CAMERA is below the configured water surface.
+--   * Determine whether the camera or character HumanoidRootPart is underwater.
 --   * Apply shallow -> deep underwater colour, blur, and darkness.
---   * Smoothly remove those effects when the camera exits the water.
+--   * Give camera submersion priority over character-only submersion.
+--   * Smoothly remove those effects when both leave the water.
 --   * Swap between world ambience and underwater ambience.
 --
 -- It does NOT force first person.
@@ -237,6 +238,14 @@ local RENDER_STEP_NAME =
 
 local camera =
 	Workspace.CurrentCamera
+
+
+local cameraUnderwater =
+	false
+
+
+local characterUnderwater =
+	false
 
 
 local underwater =
@@ -478,7 +487,9 @@ end
 -- UNDERWATER STATE
 --==============================================================
 
-local function enterUnderwater()
+local function enterUnderwater(
+	depthY: number
+)
 
 	if underwater then
 		return
@@ -499,30 +510,23 @@ local function enterUnderwater()
 	cancelTweens()
 
 
-	local currentCamera =
-		camera
+	local depth =
+		math.max(
+			0,
+
+			getSurfaceY()
+			- depthY
+		)
 
 
-	if currentCamera then
+	currentDepthAlpha =
+		math.clamp(
+			depth
+			/ Settings.FullDarkDepth,
 
-		local depth =
-			math.max(
-				0,
-
-				getSurfaceY()
-				- currentCamera.CFrame.Position.Y
-			)
-
-
-		currentDepthAlpha =
-			math.clamp(
-				depth
-				/ Settings.FullDarkDepth,
-
-				0,
-				1
-			)
-	end
+			0,
+			1
+		)
 end
 
 
@@ -595,17 +599,10 @@ end
 --==============================================================
 
 local function updateUnderwaterVisuals(
-	dt: number
+	dt: number,
+	depthY: number
 )
-
-	local currentCamera =
-		camera
-
-
-	if
-		not underwater
-		or not currentCamera
-	then
+	if not underwater then
 		return
 	end
 
@@ -615,7 +612,7 @@ local function updateUnderwaterVisuals(
 			0,
 
 			getSurfaceY()
-			- currentCamera.CFrame.Position.Y
+			- depthY
 		)
 
 
@@ -706,7 +703,7 @@ end
 
 
 --==============================================================
--- CAMERA UPDATE
+-- CAMERA + CHARACTER DEPTH UPDATE
 --==============================================================
 
 RunService:BindToRenderStep(
@@ -728,6 +725,15 @@ RunService:BindToRenderStep(
 			return
 		end
 
+		local character =
+			player.Character
+
+
+		local root =
+			if character
+			then character:FindFirstChild("HumanoidRootPart")
+			else nil
+
 
 		local surfaceY =
 			getSurfaceY()
@@ -737,37 +743,78 @@ RunService:BindToRenderStep(
 			currentCamera.CFrame.Position.Y
 
 
-		if not underwater then
-
+		if not cameraUnderwater then
 			if
 				cameraY
 				< surfaceY
 				- Settings.CameraEnterDepth
 			then
-
-				enterUnderwater()
+				cameraUnderwater = true
 			end
-
 		else
-
 			if
 				cameraY
 				> surfaceY
 				+ Settings.CameraExitHeight
 			then
-
-				exitUnderwater()
-
-				return
+				cameraUnderwater = false
 			end
 		end
 
 
-		if underwater then
+		local rootY: number? =
+			nil
+
+
+		if
+			root
+			and root:IsA("BasePart")
+		then
+			rootY = root.Position.Y
+
+			if not characterUnderwater then
+				if
+					rootY
+					< surfaceY
+					- Settings.CameraEnterDepth
+				then
+					characterUnderwater = true
+				end
+			else
+				if
+					rootY
+					> surfaceY
+					+ Settings.CameraExitHeight
+				then
+					characterUnderwater = false
+				end
+			end
+		else
+			characterUnderwater = false
+		end
+
+
+		local depthY: number? =
+			if cameraUnderwater
+			then cameraY
+			elseif characterUnderwater
+			then rootY
+			else nil
+
+
+		if depthY ~= nil then
+			if not underwater then
+				enterUnderwater(
+					depthY
+				)
+			end
 
 			updateUnderwaterVisuals(
-				dt
+				dt,
+				depthY
 			)
+		elseif underwater then
+			exitUnderwater()
 		end
 	end
 )

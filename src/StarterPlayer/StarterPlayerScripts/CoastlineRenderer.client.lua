@@ -25,7 +25,8 @@
 -- layers sort/refract in ways they were never authored for. Rather
 -- than trying to fix that view, we fade the pair out as the camera
 -- submerges and fade it back in as it resurfaces. The fade follows the
--- root-part height so camera rotation cannot change it.
+-- camera height so it transitions when the player's actual view crosses
+-- the surface band, independently of the character body's height.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -43,8 +44,8 @@ local WaterConfig =
 		:WaitForChild("WaterConfig")
 	)
 
-local SurfaceTest =
-	WaterConfig.Swimming.SurfaceTest
+local UnderwaterSettings =
+	WaterConfig.Underwater
 
 --==============================================================
 -- ASSETS
@@ -98,7 +99,8 @@ assert(
 local EFFECT_Y_OFFSET = 1.75
 
 local WATER_PART_Y_OFFSET = -0.4
-local COASTLINE_Y_OFFSET = 0.4
+-- Lower the visible foam/intersection layer by 0.35 studs.
+local COASTLINE_Y_OFFSET = 0.05
 
 local FOLLOW_SNAP = 32
 
@@ -136,15 +138,14 @@ local HAND_PART_NAMES: { [string]: boolean } = {
 -- SUBMERSION FADE SETTINGS
 --==============================================================
 
--- Absolute world-space ROOT PART Y thresholds, tuned from testing.
---
--- At or above this height, the effect is fully visible.
-local SURFACE_EFFECT_VISIBLE_Y =
-	SurfaceTest.FloatMinY
+-- Match the existing underwater camera transition around the live visual
+-- coastline plane. The effect is fully visible above CameraExitHeight and
+-- fully hidden below CameraEnterDepth, with a smooth ramp between them.
+local SURFACE_EFFECT_VISIBLE_OFFSET =
+	UnderwaterSettings.CameraExitHeight
 
--- At or below this height, the effect is fully invisible.
-local SURFACE_EFFECT_HIDDEN_Y =
-	SurfaceTest.AssistStartY
+local SURFACE_EFFECT_HIDDEN_OFFSET =
+	-UnderwaterSettings.CameraEnterDepth
 
 -- Optional extra time-based smoothing layered on top of the
 -- position-based ramp above, so fast camera movement through the
@@ -619,34 +620,43 @@ local function lerpNumber(
 		* alpha
 end
 
--- Linear ramp purely as a function of root-part height.
+-- Linear ramp purely as a function of camera height.
 --
--- >= SURFACE_EFFECT_VISIBLE_Y : 0 (fully visible)
--- <= SURFACE_EFFECT_HIDDEN_Y  : 1 (fully invisible)
+-- >= coastline + visible offset : 0 (fully visible)
+-- <= coastline + hidden offset  : 1 (fully invisible)
 -- in between          : smooth 0 -> 1
 local function getTargetFadeAlpha(
-	rootY: number
+	cameraY: number,
+	transitionY: number
 ): number
+	local visibleY =
+		transitionY
+		+ SURFACE_EFFECT_VISIBLE_OFFSET
 
-	if rootY >= SURFACE_EFFECT_VISIBLE_Y then
+	local hiddenY =
+		transitionY
+		+ SURFACE_EFFECT_HIDDEN_OFFSET
+
+	if cameraY >= visibleY then
 		return 0
 	end
 
-	if rootY <= SURFACE_EFFECT_HIDDEN_Y then
+	if cameraY <= hiddenY then
 		return 1
 	end
 
 	return
-		(SURFACE_EFFECT_VISIBLE_Y - rootY)
+		(visibleY - cameraY)
 		/ (
-			SURFACE_EFFECT_VISIBLE_Y
-			- SURFACE_EFFECT_HIDDEN_Y
+			visibleY
+			- hiddenY
 		)
 end
 
 local function updateSubmersionFade(
 	dt: number,
-	rootY: number
+	cameraY: number,
+	transitionY: number
 )
 	if effectFolder:GetAttribute("Enabled") == false then
 		return
@@ -654,7 +664,8 @@ local function updateSubmersionFade(
 
 	local target =
 		getTargetFadeAlpha(
-			rootY
+			cameraY,
+			transitionY
 		)
 
 	local alpha =
@@ -733,10 +744,16 @@ RunService:BindToRenderStep(
 			root.Position
 		)
 
-		updateSubmersionFade(
-			dt,
-			root.Position.Y
-		)
+		local camera =
+			Workspace.CurrentCamera
+
+		if camera then
+			updateSubmersionFade(
+				dt,
+				camera.CFrame.Position.Y,
+				coastline.CFrame.Position.Y
+			)
+		end
 
 		updateSurfaceIdleSound(
 			dt,

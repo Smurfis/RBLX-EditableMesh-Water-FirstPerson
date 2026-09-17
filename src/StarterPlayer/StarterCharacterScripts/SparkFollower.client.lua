@@ -1786,7 +1786,28 @@ local function getRenderedSparkCFrame(
 ): CFrame
 	local camera = workspace.CurrentCamera
 
-	if not camera or not isFirstPerson or zoomedOutShoulderMode or isCharacterClimbing() or focusedModel ~= nil then
+	if not camera or isCharacterClimbing() then
+		FirstPersonReturnFacing.Flipped = false
+		return solvedCFrame
+	end
+
+	-- Keep Spark upright and turn him horizontally toward the character while
+	-- he hovers over a focused object. Do not inherit camera pitch/roll here:
+	-- rotating that full camera basis can make the 180-degree turn read as a flip.
+	if focusedModel ~= nil then
+		FirstPersonReturnFacing.Flipped = false
+
+		local position = solvedCFrame.Position
+		local characterFacingPosition = Vector3.new(head.Position.X, position.Y, head.Position.Z)
+
+		if (characterFacingPosition - position).Magnitude > 0.001 then
+			return CFrame.lookAt(position, characterFacingPosition, Vector3.yAxis)
+		end
+
+		return CFrame.new(position) * rootPart.CFrame.Rotation
+	end
+
+	if not isFirstPerson or zoomedOutShoulderMode then
 		FirstPersonReturnFacing.Flipped = false
 		return solvedCFrame
 	end

@@ -18,9 +18,8 @@
 --   * The mesh treadmill moves only in exact grid increments.
 --   * Wave phase is evaluated in WORLD SPACE.
 --   * Four stacked render layers share one EditableMesh for a stylized white water rim.
---   * Cheap far-ocean coverage follows the camera-projected water target.
---   * High viewpoints therefore move cheap coverage ahead of the camera instead
---     of wasting half of it behind the player.
+--   * Detailed and far-ocean coverage follow the character body on the shared grid.
+--   * Camera position/orientation still drive visibility, LOD, and update scheduling.
 
 local AssetService = game:GetService("AssetService")
 local RunService = game:GetService("RunService")
@@ -1146,7 +1145,7 @@ local lastFarAnchorX: number? = nil
 local lastFarAnchorZ: number? = nil
 
 local function updateFarWater(
-	cameraPosition: Vector3,
+	anchorPosition: Vector3,
 	surfaceY: number
 )
 
@@ -1154,18 +1153,18 @@ local function updateFarWater(
 		return
 	end
 
-	-- Use the same anchor grid as the detailed mesh. Translation moves both
-	-- sections together, while camera rotation does not move either one.
+	-- Use the same character-body anchor grid as the detailed mesh. Translation
+	-- moves both sections together, while camera motion/rotation does not.
 	local anchorX =
 		m_round(
-			cameraPosition.X
+			anchorPosition.X
 			/ LOGICAL_CHUNK_SIZE
 		)
 		* LOGICAL_CHUNK_SIZE
 
 	local anchorZ =
 		m_round(
-			cameraPosition.Z
+			anchorPosition.Z
 			/ LOGICAL_CHUNK_SIZE
 		)
 		* LOGICAL_CHUNK_SIZE
@@ -1569,7 +1568,7 @@ local meshAnchorX: number? = nil
 local meshAnchorZ: number? = nil
 
 local function updateMeshAnchor(
-	cameraPosition: Vector3,
+	anchorPosition: Vector3,
 	surfaceY: number
 ): boolean
 
@@ -1583,14 +1582,14 @@ local function updateMeshAnchor(
 
 	local newX =
 		m_round(
-			cameraPosition.X
+			anchorPosition.X
 			/ LOGICAL_CHUNK_SIZE
 		)
 		* LOGICAL_CHUNK_SIZE
 
 	local newZ =
 		m_round(
-			cameraPosition.Z
+			anchorPosition.Z
 			/ LOGICAL_CHUNK_SIZE
 		)
 		* LOGICAL_CHUNK_SIZE
@@ -2023,14 +2022,32 @@ RunService:BindToRenderStep(
 				camera
 			)
 
+		-- Keep the ocean treadmill attached to the character body rather than
+		-- the camera. Camera data remains authoritative for visibility/LOD and
+		-- underwater update throttling below.
+		local oceanAnchorPosition =
+			cameraPosition
+
+		local cameraSubject =
+			camera.CameraSubject
+
+		if
+			cameraSubject
+			and cameraSubject:IsA("Humanoid")
+			and cameraSubject.RootPart
+		then
+			oceanAnchorPosition =
+				cameraSubject.RootPart.Position
+		end
+
 		local anchorChanged =
 			updateMeshAnchor(
-				cameraPosition,
+				oceanAnchorPosition,
 				surfaceY
 			)
 
 		updateFarWater(
-			cameraPosition,
+			oceanAnchorPosition,
 			surfaceY
 		)
 
