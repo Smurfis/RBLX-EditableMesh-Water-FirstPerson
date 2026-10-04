@@ -1,3 +1,22 @@
+## Unreleased - 2026-10-04 - Mobile Controls and Helm Exit
+
+* Leaving a VehicleSeat named `BoatSeat` now releases the seated camera, clears seated look state, and returns to normal third-person camera mode and movement-direction turning. First-person exits receive a brief zoom-out handoff to prevent immediate mouse recapture; existing third-person zoom is preserved.
+* Helm exits are tracked through `Humanoid.SeatPart`, including after zooming out while steering, with the connection cleaned up on character replacement.
+* Closing settings now releases the cursor and lets the camera controller apply the selected mode, preventing a lingering lock in normal third person.
+
+* Added a 44-pixel settings button at the right of Roblox's topbar safe area on touch-enabled devices, replacing the small bottom-right settings keybind entry on those devices.
+* Added an in-panel close button and constrained the settings panel to the available safe area, including after screen rotation.
+* Settings sliders now support touch dragging through larger hit targets, track the initiating finger, and suspend list scrolling until the drag ends. Closing settings or losing window focus also releases the drag.
+* Mobile settings playtesting pending: open/close from the top-right button, toggle options, drag sliders, scroll the list, and rotate the device. Desktop keyboard/mouse access remains available.
+
+* Added a `UserInputService.TouchPinch` handoff for seated first person, which previously only released its Scriptable camera on mouse-wheel zoom-out.
+* Pinching fingers together now releases the seated camera with an initial 4-stud zoom-out, capped by `CameraMaxZoomDistance`. The original minimum zoom is restored after the next camera update so first person remains available.
+* Ignores UI-processed gestures, open settings, text entry and small pinch jitter; clears gesture state on completion, cancellation and character cleanup.
+* Standing and third-person zoom continue through Roblox's CameraModule. Desktop mouse-wheel behavior is unchanged.
+* Mobile device playtesting pending: pinch out of seated first person, zoom back in, repeat after dismount/respawn, and check standing zoom and UI interaction.
+* Added `PerformOceanSuggestions.txt` with a source-based performance review, prioritised optimizations, lower-cost ocean profiles and a visual/performance comparison plan. Ocean runtime code and assets are unchanged.
+* Validation: Rojo project build, Luau syntax/AST verification for both changed client scripts, and Git whitespace checks passed. Live mobile input and repeated helm enter/exit playtests remain pending.
+
 ## v0.6.2-2-dev - 2026-09-17 - Helm Prompt and Safe Occupant Exit
 
 Added a server-authoritative helm interaction without changing the validated SmallBoat physics lifecycle.

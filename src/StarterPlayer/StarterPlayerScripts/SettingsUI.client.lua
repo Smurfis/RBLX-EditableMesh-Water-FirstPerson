@@ -12,7 +12,43 @@ local Checkbox = require(ReplicatedStorage:WaitForChild("UI"):WaitForChild("Chec
 local gui = Instance.new("ScreenGui")
 gui.Name = "SettingsGui"
 gui.ResetOnSpawn = false
+gui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
+gui.DisplayOrder = 30
 gui.Parent = playerGui
+
+-- Keep the mobile entry beside Roblox's controls, inside the free topbar area.
+local topbarGui = Instance.new("ScreenGui")
+topbarGui.Name = "SettingsTopbarGui"
+topbarGui.ResetOnSpawn = false
+topbarGui.ScreenInsets = Enum.ScreenInsets.TopbarSafeInsets
+topbarGui.DisplayOrder = 31
+topbarGui.Enabled = UserInputService.TouchEnabled
+topbarGui.Parent = playerGui
+
+local topbarSettingsButton = Instance.new("TextButton")
+topbarSettingsButton.Name = "SettingsButton"
+topbarSettingsButton.AnchorPoint = Vector2.new(1, 0.5)
+topbarSettingsButton.Position = UDim2.new(1, -8, 0.5, 0)
+topbarSettingsButton.Size = UDim2.fromOffset(44, 44)
+topbarSettingsButton.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
+topbarSettingsButton.BackgroundTransparency = 0.08
+topbarSettingsButton.BorderSizePixel = 0
+topbarSettingsButton.Text = ""
+topbarSettingsButton.Parent = topbarGui
+
+local topbarCorner = Instance.new("UICorner")
+topbarCorner.CornerRadius = UDim.new(1, 0)
+topbarCorner.Parent = topbarSettingsButton
+
+local topbarSettingsIcon = Instance.new("ImageLabel")
+topbarSettingsIcon.Name = "SettingsIcon"
+topbarSettingsIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+topbarSettingsIcon.Position = UDim2.fromScale(0.5, 0.5)
+topbarSettingsIcon.Size = UDim2.fromOffset(24, 24)
+topbarSettingsIcon.BackgroundTransparency = 1
+topbarSettingsIcon.Image = "rbxassetid://97812683336887"
+topbarSettingsIcon.ScaleType = Enum.ScaleType.Fit
+topbarSettingsIcon.Parent = topbarSettingsButton
 
 local container = Instance.new("Frame")
 local SETTINGS_SIZE = UDim2.fromOffset(360, 300)
@@ -23,6 +59,7 @@ container.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
 container.BackgroundTransparency = 0.08
 container.BorderSizePixel = 0
 container.ClipsDescendants = true
+container.Active = true
 container.Visible = false
 container.Parent = gui
 
@@ -42,15 +79,17 @@ title.TextSize = 18
 title.TextXAlignment = Enum.TextXAlignment.Center
 title.Parent = container
 
-local settingsPanelIcon = Instance.new("ImageLabel")
-settingsPanelIcon.Name = "SettingsIcon"
-settingsPanelIcon.AnchorPoint = Vector2.new(1, 0)
-settingsPanelIcon.Position = UDim2.new(1, -14, 0, 12)
-settingsPanelIcon.Size = UDim2.fromOffset(22, 22)
-settingsPanelIcon.BackgroundTransparency = 1
-settingsPanelIcon.Image = "rbxassetid://97812683336887"
-settingsPanelIcon.ScaleType = Enum.ScaleType.Fit
-settingsPanelIcon.Parent = container
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "CloseSettings"
+closeButton.AnchorPoint = Vector2.new(1, 0)
+closeButton.Position = UDim2.new(1, -2, 0, 0)
+closeButton.Size = UDim2.fromOffset(44, 44)
+closeButton.BackgroundTransparency = 1
+closeButton.Text = "X"
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Font = Enum.Font.GothamBold
+closeButton.TextSize = 18
+closeButton.Parent = container
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Name = "SettingsList"
@@ -72,7 +111,7 @@ listLayout.Parent = scroll
 local function createSlider(name: string, labelText: string, defaultValue: number, callback: (number) -> ()): Frame
 	local frame = Instance.new("Frame")
 	frame.Name = name
-	frame.Size = UDim2.new(1, -8, 0, 48)
+	frame.Size = UDim2.new(1, -8, 0, 64)
 	frame.BackgroundTransparency = 1
 	frame.LayoutOrder = 20
 	frame.Parent = scroll
@@ -87,7 +126,7 @@ local function createSlider(name: string, labelText: string, defaultValue: numbe
 	label.Parent = frame
 
 	local track = Instance.new("Frame")
-	track.Position = UDim2.fromOffset(0, 28)
+	track.Position = UDim2.fromOffset(0, 38)
 	track.Size = UDim2.new(1, 0, 0, 8)
 	track.BackgroundColor3 = Color3.fromRGB(60, 70, 82)
 	track.BorderSizePixel = 0
@@ -121,8 +160,18 @@ local function createSlider(name: string, labelText: string, defaultValue: numbe
 	knobCorner.CornerRadius = UDim.new(1, 0)
 	knobCorner.Parent = knob
 
+	-- A full-height touch target is easier to grab than the 8-pixel visual track.
+	local hitTarget = Instance.new("TextButton")
+	hitTarget.Name = "SliderInput"
+	hitTarget.Position = UDim2.fromOffset(0, 20)
+	hitTarget.Size = UDim2.new(1, 0, 0, 44)
+	hitTarget.BackgroundTransparency = 1
+	hitTarget.Text = ""
+	hitTarget.ZIndex = 2
+	hitTarget.Parent = frame
+
 	local value = defaultValue
-	local dragging = false
+	local dragInput: InputObject? = nil
 
 	local function setValue(nextValue: number)
 		value = math.clamp(nextValue, 0, 1)
@@ -137,26 +186,49 @@ local function createSlider(name: string, labelText: string, defaultValue: numbe
 		setValue((input.Position.X - track.AbsolutePosition.X) / width)
 	end
 
-	knob.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
-			updateFromInput(input)
+	local function stopDragging()
+		if dragInput then
+			dragInput = nil
+			scroll.ScrollingEnabled = true
 		end
-	end)
-	track.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
+	end
+
+	hitTarget.InputBegan:Connect(function(input)
+		if dragInput or not scroll.ScrollingEnabled then
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+		then
+			dragInput = input
+			-- Keep the scrolling list from moving beneath the finger during a drag.
+			scroll.ScrollingEnabled = false
 			updateFromInput(input)
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		if not dragInput then
+			return
+		end
+		if input == dragInput
+			or (dragInput.UserInputType == Enum.UserInputType.MouseButton1
+				and input.UserInputType == Enum.UserInputType.MouseMovement)
+		then
 			updateFromInput(input)
 		end
 	end)
 	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = false
+		if input == dragInput
+			or (dragInput and dragInput.UserInputType == Enum.UserInputType.MouseButton1
+				and input.UserInputType == Enum.UserInputType.MouseButton1)
+		then
+			stopDragging()
+		end
+	end)
+	UserInputService.WindowFocusReleased:Connect(stopDragging)
+	player:GetAttributeChangedSignal("SettingsOpen"):Connect(function()
+		if player:GetAttribute("SettingsOpen") ~= true then
+			stopDragging()
 		end
 	end)
 
@@ -349,6 +421,13 @@ end
 
 local settingsRow = createKeybindRow("SettingsKeybind", "rbxassetid://97812683336887", "SETTINGS: [=]", -42)
 
+local function updateSettingsEntry()
+	topbarGui.Enabled = UserInputService.TouchEnabled
+	settingsRow.Visible = not UserInputService.TouchEnabled
+end
+UserInputService:GetPropertyChangedSignal("TouchEnabled"):Connect(updateSettingsEntry)
+updateSettingsEntry()
+
 local freeMouseRow = createKeybindRow("MouseLockKeybind", "rbxassetid://77904780414059", "Free Mouse: [M]", -98)
 
 local cameraModeRow =
@@ -491,10 +570,23 @@ end
 updateMouseUi()
 
 local settingsTweenInfo = TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local settingsTween: Tween? = nil
+
+local function getSettingsSize(): UDim2
+	local available = gui.AbsoluteSize
+	return UDim2.fromOffset(
+		math.min(SETTINGS_SIZE.X.Offset, math.max(0, available.X - 24)),
+		math.min(SETTINGS_SIZE.Y.Offset, math.max(0, available.Y - 24))
+	)
+end
 
 local function setSettingsOpen(open: boolean)
 	settingsOpen = open
 	player:SetAttribute("SettingsOpen", open)
+	topbarSettingsIcon.ImageColor3 = if open then Color3.fromRGB(100, 190, 240) else Color3.new(1, 1, 1)
+	if settingsTween then
+		settingsTween:Cancel()
+	end
 
 	if open then
 		mouseReleased = true
@@ -502,27 +594,48 @@ local function setSettingsOpen(open: boolean)
 		UserInputService.MouseIconEnabled = true
 		updateMouseUi()
 		container.Visible = true
-		TweenService:Create(container, settingsTweenInfo, {
-			Size = SETTINGS_SIZE,
-		}):Play()
+		settingsTween = TweenService:Create(container, settingsTweenInfo, {
+			Size = getSettingsSize(),
+		})
+		settingsTween:Play()
 		return
 	end
 
 	mouseReleased = false
-	UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-	UserInputService.MouseIconEnabled = false
+	-- FirstPersonController applies the selected camera mode on the next frame.
+	-- Closing settings must not leave normal third person with a captured mouse.
+	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+	UserInputService.MouseIconEnabled = true
 	updateMouseUi()
 
 	local tween = TweenService:Create(container, settingsTweenInfo, {
-		Size = UDim2.fromOffset(0, SETTINGS_SIZE.Y.Offset),
+		Size = UDim2.fromOffset(0, getSettingsSize().Y.Offset),
 	})
-	tween.Completed:Connect(function()
-		if not settingsOpen then
+	tween.Completed:Connect(function(playbackState)
+		if playbackState == Enum.PlaybackState.Completed and not settingsOpen then
 			container.Visible = false
 		end
 	end)
+	settingsTween = tween
 	tween:Play()
 end
+
+-- Safe-area changes include rotating a phone between portrait and landscape.
+gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+	if settingsOpen then
+		if settingsTween then
+			settingsTween:Cancel()
+		end
+		container.Size = getSettingsSize()
+	end
+end)
+
+topbarSettingsButton.Activated:Connect(function()
+	setSettingsOpen(not settingsOpen)
+end)
+closeButton.Activated:Connect(function()
+	setSettingsOpen(false)
+end)
 
 local function addKeybindButton(row: Frame): TextButton
 	local button = Instance.new("TextButton")

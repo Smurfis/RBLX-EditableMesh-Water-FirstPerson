@@ -63,7 +63,8 @@ local DEFAULT_THIRD_PERSON_CAMERA_MODE = 1
 local MAX_THIRD_PERSON_CAMERA_MODE = 3
 local CAMERA_MODE_TOGGLE_SOUND_ID = "rbxassetid://128614591007939"
 
--- This preference survives first-person entry/exit and character respawns.
+-- This preference survives zoom transitions and character respawns.
+-- Leaving the boat helm explicitly returns to normal third-person movement.
 -- First person derives its effective input state without replacing it.
 if player:GetAttribute("ThirdPersonCameraMode") == nil then
 	player:SetAttribute("ThirdPersonCameraMode", DEFAULT_THIRD_PERSON_CAMERA_MODE)
@@ -117,6 +118,10 @@ local THIRD_PERSON_FALLBACK_MAX_ZOOM_DISTANCE = 20
 -- Hysteresis prevents rapid toggling right on the first-person boundary.
 local FIRST_PERSON_ENTER_DISTANCE = 0.75
 local FIRST_PERSON_EXIT_DISTANCE = 1.05
+
+-- Touch zoom-out and helm dismount can release the custom seated camera.
+local SEATED_ZOOM_OUT_DISTANCE = 4
+local TOUCH_PINCH_RELEASE_THRESHOLD = 0.02
 
 -- Head/accessories disappear quickly when entering first person, but
 -- return more gently when zooming back into third person.
@@ -301,10 +306,12 @@ local mouseReleased = false
 -- Hybrid zoom state.
 local firstPersonActive = false
 
--- When the seated Scriptable camera is released by mouse-wheel zoom-out,
+-- When the seated Scriptable camera is released by wheel or touch zoom-out,
 -- wait until Roblox CameraModule has actually moved away from the
 -- first-person boundary before allowing first person to engage again.
 local waitingForSeatedZoomOut = false
+local touchPinchPeakScale: number? = nil
+local zoomOutOriginalMinDistance: number? = nil
 
 -- 0 = head/accessories fully visible.
 -- 1 = head/accessories fully hidden.
@@ -316,6 +323,7 @@ local firstPersonVisibilityAlpha = 0
 
 local originalLocalTransparency: { [BasePart]: number } = {}
 local characterDescendantAddedConnection: RBXScriptConnection? = nil
+local characterSeatChangedConnection: RBXScriptConnection? = nil
 
 ----------------------------------------------------------------
 -- HELPERS
@@ -330,6 +338,13 @@ local function expAlpha(speed: number, dt: number): number
 end
 
 local function ensureZoomableCameraMode()
+	-- A seated camera handoff raises the minimum for one CameraModule update.
+	-- Restore the original limit so the player can zoom into first person again.
+	if zoomOutOriginalMinDistance ~= nil then
+		player.CameraMinZoomDistance = zoomOutOriginalMinDistance
+		zoomOutOriginalMinDistance = nil
+	end
+
 	-- Classic is required so Roblox CameraModule can zoom between
 	-- first person and normal third person.
 	if player.CameraMode ~= Enum.CameraMode.Classic then
@@ -837,6 +852,32 @@ local function restoreDefaultCamera()
 	end
 end
 
+local function releaseSeatedCameraForZoomOut()
+	local needsZoomOut = firstPersonActive or wasSeated or waitingForSeatedZoomOut
+	touchPinchPeakScale = nil
+	waitingForSeatedZoomOut = needsZoomOut
+	setFirstPersonActive(false)
+	restoreDefaultCamera()
+
+	if needsZoomOut then
+		-- Native touch input was disabled while the camera was Scriptable.
+		-- Also move out of first person on dismount so the next update cannot
+		-- immediately recapture the cursor. Leave existing third-person zoom alone.
+		if zoomOutOriginalMinDistance == nil then
+			zoomOutOriginalMinDistance = player.CameraMinZoomDistance
+		end
+		player.CameraMinZoomDistance = math.min(SEATED_ZOOM_OUT_DISTANCE, player.CameraMaxZoomDistance)
+	end
+end
+
+local function restoreMovementAfterSteering()
+	releaseSeatedCameraForZoomOut()
+	wasSeated = false
+	seatedCameraYaw = 0
+	seatedCameraPitch = 0
+	setThirdPersonCameraMode(DEFAULT_THIRD_PERSON_CAMERA_MODE, false)
+end
+
 local function updateCameraOffsetForMode()
 	local currentHumanoid = humanoid
 
@@ -962,6 +1003,11 @@ end
 ----------------------------------------------------------------
 
 local function restorePreviousCharacter()
+	if characterSeatChangedConnection then
+		characterSeatChangedConnection:Disconnect()
+		characterSeatChangedConnection = nil
+	end
+
 	if abilityManagerTurning and abilityManagerTurning.Parent then
 		abilityManagerTurning:SetAttribute("UseLookDirectionInput", false)
 	end
@@ -977,6 +1023,11 @@ local function restorePreviousCharacter()
 	-- Cleanup must always leave Roblox in normal camera ownership.
 	firstPersonActive = false
 	waitingForSeatedZoomOut = false
+	touchPinchPeakScale = nil
+	if zoomOutOriginalMinDistance ~= nil then
+		player.CameraMinZoomDistance = zoomOutOriginalMinDistance
+		zoomOutOriginalMinDistance = nil
+	end
 	firstPersonVisibilityAlpha = 0
 
 	restoreDefaultCamera()
@@ -1130,6 +1181,23 @@ local function setupCharacter(newCharacter: Model)
 
 	ensureZoomableCameraMode()
 	applyMouseState()
+
+	-- SeatPart is independent of whether the player zoomed out while steering.
+	-- Track the actual helm exit, including prompt and jump dismounts.
+	local trackedHumanoid = humanoid
+	if trackedHumanoid then
+		local previousSeat = trackedHumanoid.SeatPart
+		characterSeatChangedConnection = trackedHumanoid:GetPropertyChangedSignal("SeatPart"):Connect(function()
+			local oldSeat = previousSeat
+			previousSeat = trackedHumanoid.SeatPart
+			if humanoid ~= trackedHumanoid or previousSeat ~= nil or not oldSeat then
+				return
+			end
+			if oldSeat:IsA("VehicleSeat") and oldSeat.Name == "BoatSeat" then
+				restoreMovementAfterSteering()
+			end
+		end)
+	end
 
 	task.spawn(function()
 		local turning = getAbilityManagerTurning(newCharacter)
@@ -1684,6 +1752,51 @@ UserInputService.InputChanged:Connect(function(input: InputObject, _gameProcesse
 		setFirstPersonActive(false)
 		restoreDefaultCamera()
 	end
+end)
+
+-- Standing/third-person pinch zoom remains owned by Roblox. Only bridge the
+-- seated Scriptable camera, whose normal CameraModule touch input is disabled.
+UserInputService.TouchPinch:Connect(function(
+	_touchPositions: { Vector2 },
+	scale: number,
+	_velocity: number,
+	state: Enum.UserInputState,
+	gameProcessedEvent: boolean
+)
+	local camera = Workspace.CurrentCamera
+	if state == Enum.UserInputState.End
+		or state == Enum.UserInputState.Cancel
+		or gameProcessedEvent
+		or player:GetAttribute("SettingsOpen") == true
+		or UserInputService:GetFocusedTextBox() ~= nil
+		or not firstPersonActive
+		or not wasSeated
+		or not isCurrentlySeated()
+		or not camera
+		or camera.CameraType ~= Enum.CameraType.Scriptable
+	then
+		touchPinchPeakScale = nil
+		return
+	end
+
+	if state == Enum.UserInputState.Begin then
+		touchPinchPeakScale = scale
+		return
+	end
+
+	local peakScale = touchPinchPeakScale
+	if state ~= Enum.UserInputState.Change or peakScale == nil then
+		return
+	end
+
+	-- Scale is cumulative for this gesture. Compare with its largest span so
+	-- gradual pinches and reversing a spread both work without reacting to jitter.
+	touchPinchPeakScale = math.max(peakScale, scale)
+	if scale > peakScale * (1 - TOUCH_PINCH_RELEASE_THRESHOLD) then
+		return
+	end
+
+	releaseSeatedCameraForZoomOut()
 end)
 
 ----------------------------------------------------------------

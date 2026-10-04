@@ -1,0 +1,266 @@
+Ocean performance suggestions - 2026-10-04
+Repository: Smurfis/RBLX-EditableMesh-Water-FirstPerson
+Reviewed Water.client.lua and WaterWaveSampler.lua from the current checkout.
+These are recommendations, not implemented ocean changes or measured FPS gains.
+
+My recommendation: remove wasted sampling work before reducing the ocean's look.
+There is a concrete opportunity here: the renderer currently evaluates the wave
+field THREE times per vertex even though it only uses one sample's height and
+horizontal displacement. After fixing that, measure transparent rendering cost.
+Only then reduce mesh density, starting with distant water rather than the waves
+beside the player.
+
+1. What the current renderer actually costs
+
+Water.client.lua creates one continuous 1,500 x 1,500-stud EditableMesh, divided
+into 25 logical update regions. It has 8,281 vertices and 16,200 triangles, with
+roughly 16.67 studs between vertices. Four MeshParts display that same mesh:
+WaterBase, WaterMiddle, WaterSurface and WaveFoamVFX. They use Glass, are double
+sided, and use Precise render fidelity. Several layers have partial transparency;
+the top layer also receives the authored SurfaceAppearance overlay.
+
+Sharing the mesh saves duplicated wave simulation and mesh allocations. It does
+not make four overlapping rendered surfaces cost the same as one. Their combined
+topology is 64,800 triangles before engine visibility/culling decisions. This is
+not a measured triangle submission count or an exact draw-call count. Large
+overlapping transparent areas may matter more than the triangle count on phones.
+
+Existing quality levels only change wave octaves and update frequency:
+
+  Quality       Maximum octaves       Visible wave updates/second
+  Ultra         14                    60
+  High          12                    45
+  Medium         9                    30
+  Low            6                    20
+
+Distance LOD further limits octaves to 10 beyond 160 studs, 7 beyond 400, and 4
+beyond 700. Visible/prewarm/hidden scheduling, underwater throttling, shared wave
+time, world-locked UVs and a world-locked treadmill already exist. Preserve them.
+Selecting Low currently does NOT reduce vertex count, layer count or material
+complexity. It can help CPU work without solving a GPU transparency bottleneck.
+
+2. First change: a renderer sample that does not calculate a normal
+
+Code locations:
+  src/StarterPlayer/StarterPlayerScripts/Water.client.lua: calculateRegion
+  src/ReplicatedStorage/Modules/WaterWaveSampler.lua: Sample
+
+calculateRegion calls WaterWaveSampler.Sample for every updated vertex, but uses
+only Height and Displacement.X/Z. Sample also evaluates the full warped wave loop
+at X + 0.25 and Z + 0.25 to calculate Normal. The renderer never uses that normal
+or the returned Position. These are real, avoidable computations and allocations.
+
+Expose a small shared API such as SampleDisplacement(x, z, time, octaves), returning
+height, displacementX and displacementZ as three numbers. Have it call the SAME
+private sampleHeightDisplacement function. Keep Sample and its normal available
+for boats and other callers that need them. Do not duplicate or simplify the math.
+
+For an illustrative full update of 8,281 vertices at 14 octaves, the wave-loop
+iteration count changes from 347,802 to 115,934. That removes two thirds of this
+particular calculation, plus unused sample tables/vector construction. Actual
+updates vary with culling and LOD. This is NOT a promise of 3x overall FPS: mesh
+writes, engine processing, GPU work and other game scripts remain.
+
+Expected visual risk: very low. Compare both APIs at identical world coordinates,
+octave counts and explicit times. Heights and displacement must match. This is
+the first change I would implement, keeping all current visual settings intact.
+
+3. Verify batching and avoid writing unchanged colors
+
+Water.client.lua already probes BatchSetValues and exposes BatchWrites on
+Workspace.__ClientRealisticWaterV4. Check that value on the actual mobile client.
+If it is false, each updated vertex receives separate SetPosition and SetColor
+calls. A full 8,281-vertex update then makes 16,562 calls, excluding UV updates.
+The current batch path instead submits positions and colors per updated region.
+BatchSetValues is documented; keep a working fallback rather than assuming every
+deployment behaves identically. [Roblox EditableMesh API](https://create.roblox.com/docs/reference/engine/classes/EditableMesh#BatchSetValues)
+
+getWaveColor quantizes to 48 palette entries. Cache each vertex's last palette
+index and submit color changes only when that index changes. That can preserve
+the exact current colors while reducing writes. Reuse output arrays, and measure
+whether building a sparse changed-color list is worthwhile on the batch path.
+Do not skip initial colors or changes caused by an octave/quality transition.
+
+Possible later compromise: update distant colors at 10-15 Hz while positions
+update faster. This changes temporal appearance, so compare crest shimmer first.
+Caching unchanged colors is the safer first step.
+
+4. Test transparent layer cost separately from wave simulation
+
+The four overlapping layers are a strong GPU suspect, not a confirmed bottleneck.
+Roblox identifies overlapping partial transparency as a source of repeated pixel
+work. [Roblox performance guidance](https://create.roblox.com/docs/performance-optimization/improve)
+
+During controlled comparisons, temporarily hide WaterMiddle first and keep
+WaterSurface and WaveFoamVFX. Then compare removing WaterBase as a separate test.
+Keep wave calculations, geometry, camera, lighting and quality fixed so the test
+isolates rendered-layer cost. Retune remaining layer color/transparency only in
+a separate visual test; identical compositing is not guaranteed with fewer layers.
+
+A promising mobile preset is three layers, retaining the main animated surface,
+base color and authored foam overlay while omitting the middle refraction layer.
+A two-layer surface-plus-foam preset is more aggressive and may lose depth/color.
+Test it only if three layers still cannot meet the target device's frame budget.
+
+Keep CoastlineRenderer's independent white intersection effect. Do not confuse
+that effect with the generated WaveFoamVFX layer, or remove both to chase FPS.
+Do not globally disable double-sided water: looking up from underwater needs an
+underside. Any above-water-only pass needs its own tested visibility rules.
+
+5. Start mobile conservatively, and expose a real ocean-quality selection
+
+The renderer starts at Ultra, waits five seconds, samples performance for 2.5
+seconds, and uses a six-second quality-change cooldown. Phones can begin with
+several expensive seconds before the first downgrade. Start a mobile-oriented
+preset conservatively and allow an explicit player override. TouchEnabled alone
+is not a reliable measure of GPU capability; use measured performance afterward.
+
+The current controller uses whole-frame Stats.FrameTime. It cannot distinguish
+water cost from loading, other scripts, GPU cost or a player's FPS cap. A steady
+30-FPS cap will currently look like a reason to lower quality. Provide a target
+frame rate and manual override; avoid repeatedly sacrificing waves for unrelated
+loading stalls. Recheck quality after sustained play, including device heating.
+
+Suggested experimental profiles, after the sampling optimization:
+
+  Preserve Look: current topology/layers/octaves/rates; optimized sampler only.
+  Mobile Balanced: 30-Hz near water; 12 near / 8 mid / 5 far / 3 horizon octaves;
+                   test three layers; retain current near vertex spacing.
+  Mobile Low: 20-30-Hz near water; 9 near / 6 mid / 4 far / 3 horizon octaves;
+              try three layers first; reduce distant geometry substantially.
+
+These require implementation; they are not existing presets. Keep prewarm updates
+lower, for example 5-10 Hz, with immediate visible-region refresh when needed.
+The exact values need device comparisons, particularly during fast camera turns.
+
+Do not assume cutting from 14 to 6 octaves removes only invisible detail. With
+the current 0.82 amplitude multiplier, 6 octaves retain about 74% of the summed
+14-octave amplitude coefficients; 9 retain 89% and 12 retain 97%. These are not
+measured visual-energy percentages. Warping and swell shaping also affect shape.
+Keep the deterministic seed, choppiness, exponential swell and shared time origin.
+
+6. Geometry reduction: protect the water beside the player
+
+For a small reversible experiment, leave the 1,500-stud coverage unchanged and
+change only CELLS_PER_LOGICAL_CHUNK at startup:
+
+  Cells/chunk   Whole grid   Vertices   Triangles   Fewer vertices   Spacing
+  18 current    91 x 91       8,281      16,200       baseline       16.67
+  16            81 x 81       6,561      12,800         20.8%        18.75
+  14            71 x 71       5,041       9,800         39.1%        21.43
+  12            61 x 61       3,721       7,200         55.1%        25.00
+
+Start at 16, not 12. These percentages describe topology reduction, not FPS gain.
+They reduce potential sampling and position-write work as well as triangles,
+but do not directly remove the overlapping transparent pixel coverage.
+
+The current lowest-frequency wave has an unwarped wavelength around 52 studs.
+25-stud spacing is already near two samples across that wave; exponential shaping
+and recursive warping add detail beyond this simple estimate. A uniform coarse
+mesh can noticeably change crests and flatten the water close to the player.
+
+For a stronger long-term result, build a continuous mesh with dense near geometry
+and progressively coarser outer rings, using stitched transition triangles and
+shared boundary vertices. Keep the existing spacing near the player and enlarge
+cells farther away. Target perhaps 3,000-5,000 total vertices as an experiment,
+not a predetermined visual-quality guarantee.
+
+This is an architectural change: update region membership, world-locked UVs,
+treadmill snapping and sampling together. Nonuniform grids cannot blindly reuse
+the current assumption that every 300-stud move overlaps the old uniform lattice.
+Prove a visually equivalent baseline first, then reduce only the outer density.
+Avoid rebuilding topology every frame or introducing many independent meshes.
+
+The flat far-water filler is currently DISABLED (FAR_FILL_ENABLED = false).
+Do not shrink the detailed ocean's footprint and assume a far ocean will hide
+the edge. Restore and visually validate that coverage before reducing footprint.
+
+7. Smooth out update spikes instead of merely lowering the average
+
+All regions start with zero accumulators. Regions sharing a rate can become due
+together, producing expensive wave-update frames. Add a small, measured work
+budget and stagger distant/prewarm updates. Prioritize nearby visible water and
+use the shared absolute wave time so delayed regions do not drift in phase.
+
+Preserve same-frame correctness when the treadmill moves or water wakes after
+being hidden. Those are not ordinary optional background updates. The current
+anchor move refreshes UVs across the entire mesh and immediately updates useful
+regions; profile those spikes specifically. Stale vertices after moving the mesh
+would put old waves at new world positions.
+
+If 20-30-Hz geometry visibly steps, interpolation between sampled poses can help,
+but writing interpolated vertices at 60 Hz still incurs 60-Hz mesh-write cost.
+Use it only after separating wave-math cost from upload/write cost. Account for
+any display delay when comparing boat position with rendered water.
+
+Moving the same loop from RenderStep to Heartbeat alone is not a computation
+reduction. Parallel wave math is a later option if profiling still justifies it;
+keep a shared time value and verify API thread safety before parallel mesh work.
+
+8. Make the existing disable switch actually stop ocean work
+
+FancyOceanDisabled currently unparents the rendered layers. The RenderStep loop
+still calculates waves and writes to the EditableMesh. This makes it useful for
+a rough render-cost comparison, but it is not a complete CPU-off switch.
+
+For an intentional disabled mode, skip that renderer's expensive updates too.
+On re-enable, rebuild currently relevant vertex positions and world-locked UVs at
+the current shared time before showing the layers. Do not stop the shared wave
+clock or disable the sampler used by boats/swimming; those are separate callers.
+
+Smaller cleanups after the main work: only assign layer CFrames when anchor or
+surface height changes, cache per-octave color normalization, and publish debug
+attributes at a low diagnostic rate rather than every render frame. These are
+secondary savings, not substitutes for removing unused normal calculations.
+
+9. Changes I would not start with
+
+- Replacing the stylized field with textbook Gerstner waves: changes the look.
+- Removing the coastline effect or Studio-managed overlay/sound assets.
+- Turning off horizontal chop or changing the random seed to simplify math.
+- Evaluating all 14 octaves for every boat or every distant mesh vertex.
+- Adding per-vertex Workspace raycasts or scanning world descendants each frame.
+- Assuming --!native solves this client renderer. Water.client.lua already has
+  that directive; Roblox's current native-code guide describes server execution.
+  Verify the actual execution mode rather than promising a mobile client benefit.
+  [Roblox native code generation](https://create.roblox.com/docs/luau/native-code-gen)
+- Assuming a generic RenderFidelity switch will decimate this live mesh correctly.
+  Compare actual geometry and appearance if testing it; use explicit topology LOD
+  for predictable density control.
+- Rebuilding collision meshes for these visual-only layers. Their collisions,
+  touch, queries and shadows are already disabled.
+
+10. Measure in this order, with a visual rollback point at each step
+
+A. Record a baseline on at least one target phone in the actual client, plus a
+   desktop comparison. Keep lighting, camera, graphics settings and scene fixed.
+   Capture an above-water view, a horizon view, shoreline, swimming, underwater,
+   a moving boat, rapid camera turns and a treadmill boundary crossing.
+
+B. Add separate debug.profilebegin/profileend markers around region calculations,
+   mesh writes and UV updates. Record total frame time, water CPU time, render/GPU
+   cost where available, typical and slow-frame times, and memory. Warm up first
+   and test long enough to observe thermal slowdown. 60 FPS allows 16.7 ms for
+   the entire frame; 30 FPS allows 33.3 ms. Ocean is only part of that budget.
+   [Roblox MicroProfiler](https://create.roblox.com/docs/performance-optimization/microprofiler)
+
+C. Implement the displacement-only sampler. Compare at fixed shared times and
+   unchanged quality. Accept this milestone only if the ocean looks the same.
+
+D. Verify batching and unchanged-color writes. Measure each change independently.
+
+E. Freeze wave updates while leaving the surface visible, then hide individual
+   layers while holding wave settings constant. These separate CPU-update and
+   rendering experiments identify which optimization should come next.
+
+F. Compare three versus four layers. Then compare 18 versus 16 cells/chunk as a
+   separate experiment. Do not mix both and lose the ability to identify why the
+   ocean changed. Check waves, foam, horizon edges and boat contact timing.
+
+G. Add tested Mobile Balanced/Low profiles and manual settings. If still needed,
+   implement the dense-center/coarse-distance topology as its own milestone.
+
+Keep ordinary geometry, server authority, boat physics and swimming behavior
+outside these renderer experiments. Lower render detail must not independently
+redefine the shared physical wave field. Validate crest/trough alignment near
+interactive objects rather than relying only on an FPS number.
